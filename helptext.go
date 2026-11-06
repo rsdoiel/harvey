@@ -24,15 +24,15 @@ It was inspired by Claude Code but designed for local language model systems
 running on small computers like a Raspberry Pi. Language model systems are
 commonly called "AI models" or "AI"; {app_name} treats them as a programmable
 interface for deliberate, documented work. {app_name} supports language model
-systems via llamafile (self-contained executables from Mozilla) and Ollama,
+systems via Ollama and hailo-ollama,
 and scales from resource-constrained hardware to more capable computers.
 {app_name} can be compiled to run on any system supported by Go. The project
 distributes executables for Linux, macOS, and Windows on x86_64 and aarch64.
 
 {app_name} looks for HARVEY.md in the current directory and uses it as a
-system prompt. It connects to a local language model system — llamafile or
-Ollama — and opens an interactive natural language programming session.
-Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI) can be
+system prompt. It connects to a local language model system — Ollama or
+hailo-ollama — and opens an interactive natural language programming session.
+Other Ollama-shaped servers on this machine or the local network can be
 added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
@@ -76,15 +76,6 @@ completion SHELL [-install]
 --ollama URL
 : Ollama base URL (default: http://localhost:11434)
 
---llamafile PATH
-: connect to PATH for this session (not persisted to harvey.yaml)
-
---llamafile-url URL
-: override the llamafile API base URL (default: http://localhost:8080)
-
---llamafile-dir PATH
-: override the llamafile discovery directory (default: ~/Models)
-
 -w, --workdir DIR
 : workspace directory (default: current directory)
 
@@ -111,9 +102,11 @@ completion SHELL [-install]
 
 --debug
 : enable diagnostic mode: sets OLLAMA_DEBUG=1 in the Ollama subprocess and
-  writes a JSONL event log to agents/logs/harvey-TIMESTAMP.jsonl covering
-  every LLM request/response, RAG injection, tool call, and skill dispatch.
-  Use "harvey --help status" to see the log path during a session.
+  adds level-debug events to the session log (agents/sessions/NAME.jsonl),
+  such as the exact messages sent with each request. The session log is
+  always written; --debug only makes it more detailed, and rendering and
+  kb ingest skip the debug events. Use "harvey --help status" to see the
+  log path during a session.
 
 --json
 : on a failing command line or session, print the error as
@@ -123,14 +116,9 @@ completion SHELL [-install]
 
 # ENVIRONMENT
 
-ANTHROPIC_API_KEY   API key for Anthropic Claude (optional, for /route add NAME anthropic://)
-DEEPSEEK_API_KEY    API key for DeepSeek (optional, for /route add NAME deepseek://)
-GEMINI_API_KEY      API key for Google Gemini (optional; GOOGLE_API_KEY also accepted)
-MISTRAL_API_KEY     API key for Mistral (optional, for /route add NAME mistral://)
-OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
-
-All of the above API key variables are filtered out of every child process
-environment — they are never passed to commands run via ! or /run.
+Common API key variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_* and
+similar) are filtered out of every child process environment — they are
+never passed to commands run via ! or /run. Harvey itself reads none of them.
 
 # EXIT STATUS
 
@@ -154,12 +142,17 @@ went wrong from the number:
 
 66
 : A named input is missing or is the wrong kind of thing: the -w directory, the
-  --continue or --replay file, the init source, or the --llamafile file. These
-  are checked before a model is started.
+  --continue or --replay file, or the init source. These
+  are checked before a model is started. Also a model that its service does
+  not have: one named with -m (or in ollama.model, or draft.model) that is not
+  installed on the Ollama, hailo-ollama or services: entry it names. The
+  message lists what is installed.
 
 69
 : A service cannot be reached: no model is connected and nobody is at a
-  terminal to choose one, or a llamafile will not start.
+  terminal to choose one, or a model is named on a service (hailo, or one in
+  the services: map) that is not answering. There is no fallback to another
+  service.
 
 70
 : An internal error, or one nothing classified. Please report it.
@@ -179,6 +172,9 @@ went wrong from the number:
 
 78
 : agents/harvey.yaml is present but malformed, and nobody is at a terminal.
+  A bad entry in its services: map counts: a name of ollama or hailo, a name
+  with a slash, two names that differ only in case, an engine other than
+  ollama or hailo, or a URL that is not http or https.
 
 A session is interactive when standard input is a terminal, except that --replay
 without --replay-continue never reaches the prompt and counts as not
@@ -237,12 +233,11 @@ are also available from the shell: harvey --help TOPIC.
 **Model and backend**
 
 /model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...]
-: unified model management across llamafile, Ollama, and llama.cpp backends;
-  place .llamafile or .gguf files in ~/Models/ — Harvey discovers them automatically;
-  Ollama models are listed live when Ollama is running; use ollama CLI for pull/rm
+: unified model management across Ollama and hailo-ollama;
+  models are listed live when the server is running; use the ollama CLI for pull/rm
 
 /workspace <status|init [PATH]>
-: show workspace root, alias count and profile; seed aliases from another workspace
+: show workspace root and alias count; seed aliases from another workspace
 
 /inspect [MODEL]
 : show detailed model information (Ollama only)
@@ -252,8 +247,17 @@ are also available from the shell: harvey --help TOPIC.
 
 **Context and history**
 
-/context <show|add TEXT...|clear>
-: manage pinned context that survives /clear
+/context
+: show what the model sees on the next turn
+
+/pin <EVENT_ID|kb:TYPE:ID|--text TEXT...>
+: keep text, a session event or a knowledge-base row in front of the model for this session
+
+/pins
+: list the pins with their cost and share of the prompt limit
+
+/unpin <N|PIN_ID|REF>
+: stop keeping a pin in front of the model
 
 /clear
 : reset conversation history (system prompt and pinned context survive)
@@ -265,12 +269,9 @@ are also available from the shell: harvey --help TOPIC.
 : show active backend, token usage, routing, recording, and debug state
 
 /hint
-: show actionable suggestions for improving results (RAG, memory, KB)
+: show actionable suggestions for improving results (memory, KB)
 
 **Sessions**
-
-/record <start [FILE]|stop|status>
-: start or stop Fountain session recording
 
 /rename NAME
 : rename the active session file without interrupting recording
@@ -280,8 +281,11 @@ are also available from the shell: harvey --help TOPIC.
 
 **Knowledge base**
 
-/kb <status|search TEXT|inject [PROJECT]|project [ID]|observe KIND BODY|concept NAME|source|retract ID|cite ID...|show ID|check-retractions>
-: query and update the SQLite knowledge base
+/kb [OPTIONS] VERB [ARGS...]
+: run the installed kb on the workspace knowledge base (kb(1)); /kb inject [PROJECT] adds knowledge base content to the conversation, and /kb project use ID sets the current project for inject and learn
+
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
+: read a recorded session and write what a model finds worth keeping to the knowledge base as draft observations (at most 5; --limit 0 for all). A draft is not searchable until you promote it with kb observation review promote in a normal shell
 
 /kb learn ingest [--min-words N] [--all] [--dry-run]
 : offer recorded sessions (at least 200 words) and hand-off notes to the knowledge base as documents, and ingest the ones you choose
@@ -295,17 +299,11 @@ are also available from the shell: harvey --help TOPIC.
 /kb learn concepts [--limit N]
 : suggest new concepts from the ingested documents; you pick which become concepts, then see each affected document as a diff of changed lines and choose whether to write it. Writes obey the permissions table; Fountain documents (sessions, hand-offs) are never rewritten
 
-/rag <list|new NAME|use NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
-: manage retrieval-augmented generation stores
-
-/memory <mine|list|show|forget|status|recall|profile> [args...]
+/memory <mine|list|show|forget|status|recall> [args...]
 : manage the session-experience memory store; mine and recall typed patterns
 
 /recall QUERY
 : search all knowledge silos (alias for /memory recall)
-
-/profile <list|show|edit|use|rename> [args...]
-: manage the workspace profile (alias for /memory profile)
 
 **Skills**
 
@@ -397,19 +395,11 @@ Actions:
 	FirstRunWizardText = `
 Harvey couldn't find a model to connect to.
 
-To get started with a local model (no internet required after download):
+To get started, install Ollama (https://ollama.com), start it, and pull a model:
 
-  1. Download a llamafile from:
-       https://huggingface.co/Mozilla/llamafile-models
-     Recommended:   Qwen2.5-Coder-7B-Q5_K_S.llamafile  (~5 GB)
-     Low-memory:    Phi-3.5-mini-instruct-Q4_K_M.llamafile  (~2 GB)
-
-  2. Place it in ~/Models/ (or any directory).
-
-  3. Run Harvey again — it will find the file automatically.
-
-Alternatively, install Ollama (https://ollama.com) and pull a model:
   ollama pull qwen2.5-coder:7b
+
+Then run Harvey again, or use /model use inside it.
 
 `
 
@@ -433,8 +423,8 @@ MODEL — backend-agnostic model management and inline switching
 
 # DESCRIPTION
 
-The /model command manages models across all backends — llamafile, Ollama,
-and llama.cpp — using a single consistent interface.
+The /model command manages models across Ollama and hailo-ollama using a
+single consistent interface.
 
 The @NAME prefix switches the active model inline, within the current prompt.
 @TAG resolves via purpose tags: if an alias is tagged "code", @code switches
@@ -449,7 +439,7 @@ the scene.
     details for that model.
 
   /model list
-    List all registered models across llamafile, Ollama, and llama.cpp,
+    List all registered models across Ollama and hailo-ollama,
     marking the active entry with an arrow. Purpose tags are shown where
     defined.
 
@@ -533,7 +523,7 @@ the scene.
   unknown.
 
   /model stop
-    Stop the active llamafile or llama.cpp server if Harvey started it.
+    Stop the active model server if Harvey started it.
     Backends not started by Harvey are left running.
 
 # AT-MENTION SWITCHING
@@ -554,7 +544,7 @@ If NAME matches none of the above, the @ prefix is treated as part of the
 prompt and no switch occurs. History is never cleared on a switch.
 
 Switch notes are written to the session file:
-  [[model switch: phi-mini (llamafile) at 2026-06-20 14:32:11]]
+  [[model switch: phi-mini (ollama) at 2026-06-20 14:32:11]]
 
 # MODEL ALIASES
 
@@ -666,8 +656,7 @@ model_aliases:
     List all defined aliases with their full model names and purpose tags.
 
   /model alias add ALIAS FULLNAME [--tags TAG,TAG,...]
-    Define a new alias. FULLNAME is an Ollama model identifier, a registered
-    llamafile name, or a llama.cpp model path. Optional --tags lists purpose
+    Define a new alias. FULLNAME is an Ollama or hailo-ollama model identifier. Optional --tags lists purpose
     labels that enable @TAG routing (comma-separated, no spaces).
     "add" is the preferred form; "set" is also accepted for compatibility.
 
@@ -708,7 +697,7 @@ ROUTING
 # DESCRIPTION
 
 Harvey can dispatch individual prompts to remote LLM endpoints — other Ollama
-instances on a Pi cluster, Llamafile servers, or cloud providers — using
+instances on a Pi cluster or elsewhere on your network — using
 @mention syntax. Prefix any prompt with @name to send it to the named endpoint instead
 of the local model. The reply is streamed back and lands in the local
 conversation history so future turns retain full context.
@@ -727,49 +716,23 @@ starting point and will be tuned over time.
 
 # ENDPOINT TYPES
 
-Local providers (no API key):
+  ollama://host:port    An Ollama or hailo-ollama server (also accepts http:// and https://).
 
-  ollama://host:port    A remote Ollama server (also accepts http:// and https://).
-  llamafile://host:port A Llamafile binary server (OpenAI-compatible, port 8080).
-  llamacpp://host:port  A llama.cpp server (OpenAI-compatible, port 8080).
-
-Cloud providers (API key read from environment):
-
-  anthropic://  Anthropic Claude  (ANTHROPIC_API_KEY)
-  deepseek://   DeepSeek          (DEEPSEEK_API_KEY)
-  gemini://     Google Gemini     (GEMINI_API_KEY or GOOGLE_API_KEY)
-  mistral://    Mistral           (MISTRAL_API_KEY)
-  openai://     OpenAI            (OPENAI_API_KEY)
+The llamafile://, llamacpp:// and cloud kinds (anthropic://, deepseek://,
+gemini://, mistral://, openai://) were removed. A route of one in
+agents/routes.json is skipped with a warning (an error without a terminal).
 
 # EXAMPLE SESSION
 
 ~~~
-  # Register a local llamafile server (running on default port 8080)
-  /route add lf llamafile://localhost:8080 bonsai-8b
-
-  # Register a local llama.cpp server (llama-server on port 8081)
-  /route add cpp llamacpp://localhost:8081 phi4-Q4_K_M
-
   # Register a Pi cluster node running Ollama
   /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
-
-  # Register the Anthropic cloud endpoint
-  /route add claude anthropic:// claude-sonnet-4-20250514
 
   # Enable routing
   /route on
 
-  # Send a task to the llamafile server
-  @lf summarise this function in one sentence
-
-  # Send a task to the llama.cpp server
-  @cpp write a unit test for the Parse function
-
   # Run a quick task on a Pi node
   @pi2 what does this error mean?
-
-  # Dispatch a complex task to the cloud
-  @claude refactor this module to use the repository pattern
 
   # Local model handles everything else (no @mention)
   what is the overall structure of this package?
@@ -779,10 +742,7 @@ Cloud providers (API key read from environment):
 
 ~~~
   /route add NAME URL [MODEL]        register a remote endpoint
-                                       @lf     llamafile://localhost:8080 bonsai-8b
-                                       @cpp    llamacpp://localhost:8081 phi4-Q4_K_M
                                        @pi2    ollama://192.168.1.12:11434 llama3.1:8b
-                                       @claude anthropic:// claude-sonnet-4-20250514
   /route remove NAME                 unregister an endpoint (alias: rm)
   /route rm NAME                     alias for remove
   /route use [NAME]                  set NAME as the sticky route so all prompts
@@ -807,7 +767,7 @@ Registered endpoints and the on/off state persist across sessions in
 
   /model use NAME        — backend-agnostic model switching
   /help model            — list, start, and switch local models
-  /help security         — API key filtering for cloud endpoints
+  /help security         — API key filtering for child processes
 
 `
 
@@ -1088,8 +1048,8 @@ vector-diagram pages. Those pages cannot be extracted by any text tool; the
 output will note them so you can follow up with a vision-capable model.
 
 The injected content is ephemeral — it is added to the current conversation
-and is not written to disk or stored in the RAG database. Use /rag ingest
-if you want to index a PDF for retrieval.
+and is not written to disk. To make a document searchable, ingest it with
+kb document ingest.
 
 # EXAMPLES
 
@@ -1115,10 +1075,9 @@ Read a short PDF (≤ 20 pages) in full:
 # SEE ALSO
 
   /read FILE...       — inject plain-text workspace files into context
-  /rag ingest PATH    — index a file into the RAG store for retrieval
+  /kb document ingest — make a document searchable (the installed kb)
   /status             — check remaining context window space
   /help read
-  /help rag
 
 `
 
@@ -1158,8 +1117,8 @@ route can accept:
 
   Text and source-code files (≤ 256 KB)
     The file content is injected as plain text, identical to /read.
-    Files larger than 256 KB are rejected; use /rag ingest for large
-    text corpora.
+    Files larger than 256 KB are rejected; ingest large text with
+    kb document ingest.
 
   Binary files
     Rejected with a clear error. Use an appropriate converter first.
@@ -1173,9 +1132,9 @@ restricted to the workspace.
 Attach an image to the next turn on a vision-capable route:
 
 ~~~
-  harvey > /route add claude https://api.anthropic.com claude-opus-4-7
+  harvey > /route add pi2 ollama://192.168.1.12:11434 llama3.2-vision
   harvey > /attach ~/screenshots/error.png
-  harvey > @claude What does this error message say?
+  harvey > @pi2 What does this error message say?
 ~~~
 
 Attach a PDF for the model to reason about:
@@ -1196,10 +1155,9 @@ Attach a local source file:
 
   /read FILE...       — inject workspace text files (workspace-scoped)
   /read-pdf FILE PAGES — inject a specific page range from a PDF
-  /rag ingest PATH    — index a file into the RAG store for retrieval
+  /kb document ingest — make a document searchable (the installed kb)
   /route              — manage named remote endpoints
   /help read-pdf
-  /help rag
 
 `
 
@@ -1228,9 +1186,7 @@ bulk import of an alias registry from an existing project.
 # SUBCOMMANDS
 
   /workspace status
-    Show the workspace root path, number of defined model aliases, the name
-    of the active workspace profile (if any), and whether
-    memory.inject_on_start is on or off.
+    Show the workspace root path and the number of defined model aliases.
 
   /workspace init [PATH]
     Copy model aliases from the workspace directory or YAML file at PATH into
@@ -1265,7 +1221,7 @@ bulk import of an alias registry from an existing project.
 
   /help model-alias   — define and tag model aliases
   /help model         — unified model management
-  /help memory        — workspace profile injection
+  /help memory        — the memory store (deprecated)
 
 `
 
@@ -1654,12 +1610,11 @@ The model has no memory of the previous conversation after /clear.
 # WHAT SURVIVES /CLEAR
 
   System prompt   — re-injected from HARVEY.md automatically.
-  Pinned context  — any text set with /context add is re-injected as the
+  Pins            — anything kept with /pin is re-injected as the
                     first user message, keeping persistent constraints
                     visible to the model across topic changes.
-  Recording       — an active /record session keeps running; the cleared
-                    conversation is not written to the session file.
-  RAG             — the RAG store and its on/off state are unaffected.
+  Recording       — the session log keeps running; the cleared conversation
+                    stays in it, as the record of what was said.
   Skills          — the skill catalog remains loaded; /skill load must be
                     re-run to activate a skill in the new context.
 
@@ -1671,7 +1626,7 @@ The model has no memory of the previous conversation after /clear.
 
 # SEE ALSO
 
-  /context   — manage pinned context that survives /clear
+  /pin       — keep something in front of the model (pins survive /clear)
   /summarize — condense history into a summary instead of discarding it
 
 `
@@ -1684,62 +1639,124 @@ The model has no memory of the previous conversation after /clear.
 
 # NAME
 
-CONTEXT — manage pinned context that survives /clear
+CONTEXT — show what the model sees on the next turn
 
 # SYNOPSIS
 
-/context show
-/context add TEXT...
-/context clear
+/context
 
 # DESCRIPTION
 
-Pinned context is a block of text that is always present as the first user
-message after the system prompt. It survives /clear so the model keeps
-seeing it no matter how many times you reset the conversation.
+/context prints the prompt Harvey would send next, grouped by what each part
+is, with its estimated size in tokens and its share of the prompt limit:
 
-Use pinned context for information the model should never lose sight of:
+  system prompt        the instructions from HARVEY.md and the skill catalog
+  pinned               what you asked to keep with /pin
+  summaries            summaries Harvey made of older turns
+  recalled knowledge   knowledge-base rows recalled or injected
+  dialog               the turns kept word for word
 
-  - A project description or goal that frames every question.
-  - Key constraints ("do not modify files outside agents/").
-  - A running summary you composed to replace a long conversation.
-  - Environment facts that are not in HARVEY.md.
+The prompt limit is the model's known prompt limit, or 85% of its context
+window when only the window is known. When neither is known, nothing is left
+out and the shares are not shown. If the next turn would leave older turns out,
+/context says how many items.
 
-Pinned context is stored in memory only; it is not persisted to
-agents/harvey.yaml or session files. It resets when Harvey exits.
+The same figures are written to the session log: each turn's model_request
+names the pinned items, the summaries, the tail kept and how many items were
+left out.
 
-# SUBCOMMANDS
-
-/context show
-  Print the current pinned context and its byte count. If no context is
-  set, prints "(pinned context is empty)".
-
-/context add TEXT...
-  Append TEXT to the pinned context. Multiple words are joined with a
-  space. Calling add again appends a newline then the new text so you can
-  build up multi-line context incrementally.
-
-~~~
-  /context add This project targets Raspberry Pi OS (armv7l).
-  /context add Never use cgo; the binary must be statically linked.
-~~~
-
-/context clear
-  Remove the pinned context and delete the pinned-context message from the
-  conversation history. The model will not see it in subsequent turns.
-
-# RELATION TO /CLEAR
-
-/clear resets the conversation history but keeps pinned context. After
-/clear, the system prompt is re-injected, then the pinned context is
-re-injected as the first user message, so the model's next turn starts
-with both.
+/context add, /context show and /context clear were removed. Use
+/pin --text TEXT, /pins and /unpin N instead.
 
 # SEE ALSO
 
-  /clear       — reset conversation history (pinned context survives)
-  /summarize   — condense history; combine with /context add to preserve
-                 a summary across /clear
+  /pin       — keep something in front of the model for this session
+  /pins      — list what is pinned, with cost
+  /unpin     — stop keeping a pin
+  /summarize — condense history by hand
+  /help pin
+
+`
+
+	// PinHelpText is shown by /help pin and harvey --help pin.
+	// Generates harvey-pin.7.md.
+	PinHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+PIN — keep something in front of the model for this session
+
+# SYNOPSIS
+
+/pin --text TEXT...
+/pin EVENT_ID
+/pin kb:record:PROJECT/DR-NNNN
+/pin kb:observation:ID
+/pins
+/unpin N | PIN_ID | REF
+
+# DESCRIPTION
+
+A pin keeps something in the prompt however long the conversation gets. The
+prompt for each turn is made of the system prompt, then the pins, then
+summaries, recalled knowledge, and the most recent turns; when the
+conversation outgrows the model's prompt limit, older turns are summarised or
+left out, but pins stay. Use a pin for a constraint, a decision, or a passage
+you cannot afford to lose.
+
+A pin can be:
+
+  --text TEXT       text you type
+  EVENT_ID          an event of this session's log, such as the line you
+                    typed or a model reply: the id looks like
+                    harvey-session-20261030-1412#0042
+  kb:record:REF     a decision record from the knowledge base, read with the
+                    installed kb: kb:record:harvey/DR-0048
+  kb:observation:ID an observation: kb:observation:592
+
+A pin is recorded in the session log (a pin event, and an unpin event when it
+is removed) and appears in the manifest of every turn after it. Pinning an
+event does not remove it from the dialog, so while it is still among the recent
+turns it is in the prompt twice.
+
+# SCOPE
+
+Pins belong to the session. A new session starts with none, /clear keeps them,
+and they are not saved anywhere else. Use the knowledge base to keep something
+beyond the session.
+
+# THE CAP
+
+Together the pins may take a quarter of the prompt limit. A pin that would go
+over is refused with exit status 1, and the refusal lists the existing pins by
+cost so you can /unpin one. When the prompt limit is not known there is no cap.
+
+# SUBCOMMANDS
+
+/pins
+  List the pins: number, what was pinned, estimated tokens, share of the prompt
+  limit, and the start of the text; then the total against the cap.
+
+/unpin N
+  Remove the pin numbered N in /pins. The pin's id (the event id of the pin) or
+  the text of its first column also work.
+
+# EXIT STATUS
+
+  0   done
+  1   a pin over the cap; an event or kb row that does not exist; no log to
+      look an event up in
+  2   a wrong argument: no argument, something that is not an event id, a kb
+      identity or --text, an unpin that names no pin
+
+# SEE ALSO
+
+  /context   — show what the model sees, with pins and their share
+  /clear     — reset the conversation (pins survive)
+  /summarize — condense history by hand
+  /kb        — the knowledge base the kb: pins read from
 
 `
 
@@ -1764,7 +1781,7 @@ SUMMARIZE — condense conversation history to free context window space
 summary of the current conversation, then replaces the entire history with:
 
   1. The system prompt (re-injected automatically).
-  2. Any pinned context set with /context add.
+  2. Any pins (see /pin).
   3. A single user message containing the summary.
 
 This frees up the context window so you can continue a long session without
@@ -1796,14 +1813,13 @@ command does nothing.
 # WHAT SURVIVES SUMMARIZE
 
   System prompt    — re-injected automatically.
-  Pinned context   — re-injected as the first user message.
-  RAG state        — unaffected.
+  Pins             — re-injected as the first user messages.
   Recording        — the running session continues; summary is not
                      written back to the Fountain file.
 
 # SEE ALSO
 
-  /context add TEXT   — pin a summary you compose manually
+  /pin --text TEXT    — pin a summary you compose manually
   /clear              — discard history entirely (no summary generated)
   /status             — check context window usage before and after
   /help context
@@ -1891,7 +1907,7 @@ STATUS — show Harvey's current runtime state
 
 /status prints a snapshot of the active Harvey session. It is the fastest
 way to confirm what model you are talking to, how full the context window is,
-and whether optional subsystems (RAG, routing, recording) are active.
+and whether optional subsystems (routing, recording) are active.
 
 # OUTPUT FIELDS
 
@@ -1902,8 +1918,8 @@ Backend
   connected the tag [external] is appended.
 
 Debug
-  Shown only when Harvey was started with --debug. Prints the path of the
-  JSONL diagnostic log file being written this session.
+  Shown only when Harvey was started with --debug. Names the session log
+  (agents/sessions/NAME.jsonl) that the level-debug events are written to.
 
 History
   Number of messages in the current conversation history (all roles).
@@ -1975,8 +1991,8 @@ HINT — show actionable suggestions for improving Harvey's results
 
 # DESCRIPTION
 
-/hint inspects the three memory silos — the session-experience memory
-store, the active RAG store, and the knowledge base — and prints a short
+/hint inspects the two memory silos — the session-experience memory
+store and the knowledge base — and prints a short
 list of suggestions for things that would help Harvey give better answers
 in this workspace. It takes no arguments and makes no changes; it only
 reports what it finds and suggests a command to run next.
@@ -1990,29 +2006,6 @@ Unmined sessions
 
     Run: /memory mine
 
-RAG store
-  No store configured
-    Suggests creating one and ingesting reference documents:
-
-      Run: /rag new NAME   then   /rag ingest <file>
-      See: /help learn
-
-  Store configured but empty
-    Suggests ingesting documents into the active store:
-
-      Run: /rag ingest <file>   (PDF, .md, .txt, .go, .ts, ...)
-      See: /help rag
-
-  Store has chunks but RAG is off
-    Suggests turning RAG on so chunks are prepended to prompts:
-
-      Run: /rag on
-
-  Store configured but not open
-    Suggests checking its status:
-
-      Run: /rag status
-
 Knowledge base
   If no SQLite knowledge base is open, suggests recording experiment
   findings so they persist across sessions:
@@ -2021,7 +2014,7 @@ Knowledge base
 
 # OUTPUT
 
-If every check passes — RAG is on with chunks, sessions are mined, and the
+If every check passes — sessions are mined and the
 knowledge base is open — /hint prints a single confirmation line and
 points to /help learn for the full memory overview.
 
@@ -2033,91 +2026,24 @@ points to /help learn for the full memory overview.
       Harvey can extract learnings from these sessions.
       Run: /memory mine
 
-    RAG is off but store "default" has 142 chunk(s).
-      Enabling RAG prepends relevant chunks to each prompt.
-      Run: /rag on
+    Knowledge base not open.
+      See: /help kb
 ~~~
 
 ~~~
   harvey > /hint
-    Everything looks good — RAG is on with chunks, sessions are mined, KB is open.
+    Everything looks good — sessions are mined, KB is open.
     Use /help learn for the full memory overview.
 ~~~
 
 # SEE ALSO
 
-  /help learn     — overview of all three memory silos
+  /help learn     — overview of the memory silos
   /memory status  — summary of the experiential memory store
-  /rag status     — summary of the active RAG store
-  /kb status      — summary of the knowledge base
+  /kb stats       — summary of the knowledge base
 `
 
 	// ─── Session management ─────────────────────────────────────────────────────
-
-	// RecordHelpText is shown by /help record and harvey --help record.
-	// Generates harvey-record.7.md.
-	RecordHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
-% R. S. Doiel
-% {release_date}
-
-# NAME
-
-RECORD — record session exchanges to a Fountain file
-
-# SYNOPSIS
-
-/record start [FILE]
-/record stop
-/record status
-
-# DESCRIPTION
-
-/record saves each user prompt and assistant reply to a plain-text Fountain
-.spmd file as the conversation progresses. Recording is on by default: Harvey
-starts recording automatically at startup and prints "Recording to …" in the
-startup banner.
-
-Recorded files can be loaded later with /session continue (to resume) or
-/session replay (to re-run against a different model).
-
-# AUTO-RECORD
-
-Harvey records automatically unless auto-record is disabled. The session
-file is created in <workdir>/agents/sessions/ with a timestamped name:
-
-  harvey-session-YYYYMMDD-HHMMSS.spmd
-
-The path is shown in the startup banner. When you exit Harvey the banner
-confirms the file was saved:
-
-  Session saved to agents/sessions/harvey-session-20260501-143200.spmd
-
-# SUBCOMMANDS
-
-/record start [FILE]
-  Begin recording to FILE. If FILE is omitted, Harvey generates a
-  timestamped name in the sessions directory. Returns an error if a
-  recording is already active — use /record stop first.
-
-/record stop
-  Close the current recording file. The path is printed on exit.
-  Harvey continues running; only the recording ends.
-
-/record status
-  Show the path of the active recording, or report that no recording
-  is in progress.
-
-# CLI FLAGS
-
-  harvey --record             auto-record with a generated filename
-  harvey --record-file FILE   auto-record to a specific path
-
-# SEE ALSO
-
-  /session   — continue or replay a recorded session
-  /help session
-
-`
 
 	// RenameHelpText is shown by /help rename and harvey --help rename.
 	// Generates harvey-rename.7.md.
@@ -2155,7 +2081,6 @@ my-feature-session.spmd in agents/sessions/.
 
 # SEE ALSO
 
-  /record   — start or stop session recording
   /session  — continue or replay a recorded session
   /help record
   /help session
@@ -2253,263 +2178,12 @@ The same operations are available as startup flags:
 
 # SEE ALSO
 
-  /record          — start or stop session recording manually
   harvey --resume  — resume the most recent session at startup (no path needed)
   harvey --help    — full CLI flag reference
 
 `
 
 	// ─── Knowledge & memory ─────────────────────────────────────────────────────
-
-	// RagHelpText is shown by /help rag and harvey --help rag.
-	// Generates harvey-rag.7.md.
-	RagHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
-% R. S. Doiel
-% {release_date}
-
-# NAME
-
-RAG — Retrieval-Augmented Generation
-
-# SYNOPSIS
-
-/rag <list|new NAME|use NAME|show [NAME]|remove NAME|ingest PATH|status|query TEXT|on|off>
-
-# DESCRIPTION
-
-RAG lets Harvey find relevant snippets from a local knowledge store and
-inject them into the context window before each prompt is sent to the model.
-This grounds the model's replies in documents you have ingested, reducing
-hallucination and allowing it to answer questions about your own codebase,
-notes, and reference material without needing those files to be manually
-read into context with /read.
-
-When RAG is on, every user prompt is silently augmented with a short block
-of matching text retrieved from the store. Only chunks that score above the
-relevance threshold (0.3 cosine similarity) are injected; if nothing scores
-high enough, the prompt is sent unmodified.
-
-# NAMED STORES
-
-Harvey supports multiple named RAG stores. Each store is an independent
-SQLite database bound to one embedding model — you cannot mix vectors from
-different embedding models in the same store, and Harvey enforces this at
-every ingest and query operation.
-
-Named stores let you maintain separate, topically focused knowledge bases
-and switch between them as your work changes:
-
-  golang        Go standard library docs, idioms, and project code
-  deno          Deno/TypeScript docs and project source
-  web-frontend  MDN references, CSS specs, web-component guides
-  writing       Style guides, project drafts, editorial notes
-  research-X    Papers and notes for a specific research topic
-
-Only the active store is open at any time, so inactive stores consume no
-memory. The active store can be changed with /rag use at any time.
-
-On storage-constrained hardware (e.g. a Raspberry Pi), keep stores small
-and topical: a focused 5 000-chunk store retrieves better than a bloated
-50 000-chunk general store, and it fits in RAM.
-
-# EMBEDDING MODEL CHOICE
-
-RAG depends on a separate embedding model — a small neural network that
-converts text to vectors. The quality of retrieval depends heavily on the
-embedding model used. The models are ranked here from best to least suitable:
-
-  nomic-embed-text        (~274 MB) best general-purpose retrieval
-  mxbai-embed-large       (~670 MB) high quality, larger
-  bge-small-en-v1.5        (~46 MB) small but retrieval-optimised
-  bge-m3                  (~1.2 GB) multilingual
-  all-minilm-l6-v2         (~46 MB) avoid — similarity-tuned, not retrieval-tuned
-
-The critical distinction: models like all-MiniLM were trained on
-sentence-similarity tasks (NLI, STS), not on document retrieval. On standard
-retrieval benchmarks (MTEB), all-MiniLM-L6-v2 scores around 56% while
-bge-small-en-v1.5 scores around 62% and nomic-embed-text around 68%. Use a
-retrieval-optimised model whenever possible.
-
-The /rag new wizard detects which embedding models are installed and
-proposes the best available one, preferring nomic-embed-text > mxbai-embed-large
-> bge- > all-minilm. If none are installed, it prints a list of recommended
-models you can pull with "ollama pull" in a shell.
-
-Each store is bound to one embedding model at creation time. If you want to
-try a different embedding model for the same topic, create a new store and
-re-ingest the documents.
-
-# WORKFLOW — FIRST STORE
-
-~~~
-  # Step 1 — choose an embedding model (one-time)
-  ollama pull nomic-embed-text      (in a shell, outside Harvey)
-
-  # Step 2 — create and name a store
-  /rag new golang
-
-  # Step 3 — ingest the documents you want Harvey to retrieve from
-  /rag ingest agents/
-  /rag ingest HARVEY.md
-  /rag ingest docs/
-
-  # Step 4 — verify retrieval quality before trusting answers
-  /rag query what license does Harvey use?
-  /rag query how does routing work?
-
-  # RAG is now on automatically — ask questions normally
-  what license does Harvey use?
-~~~
-
-# WORKFLOW — MULTIPLE STORES
-
-~~~
-  # Create a writing store alongside the golang store
-  /rag new writing
-
-  # Ingest style guides and project drafts
-  /rag ingest ~/writing/style-guide.md
-  /rag ingest ~/projects/novel/drafts/
-
-  # Switch back to golang when you return to code
-  /rag use golang
-
-  # See all registered stores
-  /rag list
-~~~
-
-# DIAGNOSING POOR RETRIEVAL
-
-Use /rag query to inspect what the store would return for a given question
-before sending it to the model. The output shows each chunk with its cosine
-similarity score (0.0–1.0) and source file:
-
-~~~
-  /rag query what license does Harvey use?
-
-  Top 5 result(s) for "what license does Harvey use?":
-
-    [1] score=0.712  source=/home/user/Laboratory/harvey/LICENSE
-        GNU AFFERO GENERAL PUBLIC LICENSE...
-
-    [2] score=0.431  source=/home/user/Laboratory/harvey/README.md
-        Harvey is licensed under AGPL-3.0...
-~~~
-
-Scores below 0.3 are dropped from the injected context. If the top scores
-are all low (< 0.3) for a question you expect the store to answer, consider:
-
-  1. Switching to a better embedding model (see Embedding Model Choice above)
-     then creating a new store and re-ingesting.
-  2. Ingesting the missing documents with /rag ingest PATH.
-  3. Rephrasing the question to be closer to the language used in the docs.
-
-# SUBCOMMANDS
-
-/rag list
-  List all registered stores with a * marking the active one.
-
-/rag new NAME
-  Interactive wizard to create a named store. Detects installed embedding
-  models, proposes the best one, shows the proposed generation-model →
-  embedding-model mapping, and asks for confirmation. Creates the database
-  at agents/rag/NAME.db and saves the config to agents/harvey.yaml.
-  The new store is immediately set as active.
-
-/rag use NAME
-  Close the currently open store and activate NAME. The change is persisted
-  to agents/harvey.yaml.
-
-/rag show [NAME]
-  Show details for the named (or active) store: database path, embedding
-  model, chunk count, and model map. If NAME is omitted, the active store
-  is shown.
-
-/rag remove NAME
-  Remove a store from the registry after confirmation. The .db file is NOT
-  deleted automatically — the path is printed so you can remove it manually.
-  Alias: drop.
-
-/rag drop NAME
-  Alias for remove.
-
-/rag ingest PATH [PATH...]
-  Reads each file or directory (recursively), splits text into
-  paragraph-sized chunks (~500 characters each), embeds them using the
-  active store's embedding model, and stores the vectors in the database.
-  Re-ingest any file after it changes to keep the store current.
-
-  Remote URIs are supported alongside local paths:
-    s3://bucket/prefix/     — list and ingest all ingestable objects (requires
-                              AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
-    sftp://[user@]host/path/ — list and ingest via SFTP over SSH (reads
-                              SFTP_PASSWORD or SFTP_KEY_PATH from environment)
-    scp://[user@]host/path/  — alias for sftp://
-    http://host/file.ext    — download and ingest a single file
-    https://host/file.ext   — same, with TLS (optional HTTP_BEARER_TOKEN or
-                              HTTP_BASIC_USER / HTTP_BASIC_PASSWORD)
-
-  Supported formats:
-    Plain text — .md, .txt, .go, .ts, .py, .yaml, .toml, .sql, and other
-                 text files.
-    PDF        — .pdf files are extracted with the poppler utilities
-                 (pdfinfo, pdftotext, pdfimages; must be installed). Each
-                 page is chunked separately, and every chunk is prefixed
-                 with the document title and page number so retrieval
-                 results always carry their source. Pages that contain
-                 only vector graphics (no extractable text) are stored
-                 with an incomplete-content marker so the model knows to
-                 ask for a vision-capable route for those pages.
-
-/rag query TEXT
-  Retrieves the top 5 matching chunks for TEXT from the active store and
-  prints each one with its cosine similarity score and source path.
-
-/rag status
-  Shows the active store (database path, embedding model, chunk count) and
-  a summary list of all registered stores.
-
-/rag on
-  Enable automatic context injection for the current session.
-
-/rag off
-  Disable automatic context injection for the current session.
-  The database and configuration are preserved; /rag on re-enables it.
-
-# CONFIGURATION
-
-RAG configuration is persisted in agents/harvey.yaml. Example with two stores:
-
-~~~yaml
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: agents/rag/golang.db
-        embedding_model: nomic-embed-text
-        model_map:
-          llama3.1:latest: nomic-embed-text
-          granite3.3:2b:   nomic-embed-text
-      - name: writing
-        db_path: agents/rag/writing.db
-        embedding_model: nomic-embed-text
-~~~
-
-Each store has its own db_path and embedding_model. The model_map lets
-different generation models share the same embedding model; entries are
-populated automatically by /rag new.
-
-Old single-store configurations (db_path at the top level of rag:) are
-automatically migrated to a store named "default" on first load.
-
-# SEE ALSO
-
-  /memory recall         — search all knowledge silos including RAG
-  /help learn            — overview of all three memory silos
-  /help kb               — structured knowledge base for experiments
-
-`
 
 	// KBHelpText is shown by /help kb and harvey --help kb.
 	// Also dispatched for "knowledge" and "knowledge-base" aliases. Generates harvey-kb.7.md.
@@ -2519,114 +2193,68 @@ automatically migrated to a store named "default" on first load.
 
 # NAME
 
-KB — knowledge base management
+KB — the knowledge base, through the installed kb
 
 # SYNOPSIS
 
-/kb [status]
-/kb search TERM [TERM...]
+/kb [OPTIONS] VERB [ARGS...]
 /kb inject [PROJECT]
-/kb project <list|add NAME [DESC]|use ID>
-/kb observe [KIND] TEXT
-/kb concept <list|add NAME [DESC]>
+/kb project use ID
 /kb learn [ingest|draft|review|concepts] [ARGS]
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
 
 # DESCRIPTION
 
-Harvey keeps a SQLite knowledge base at <workdir>/agents/knowledge.db.
-It stores structured notes about experiments and concepts so you can
-search and inject that context into conversations without relying on
-the model's general knowledge.
+/kb runs the installed kb(1) on this workspace's knowledge base,
+<workdir>/agents/knowledge.db, and shows its output. The verbs, options and
+exit codes are kb's own, so anything the command line can do, /kb can, and
+"/kb help" shows kb's manual. harvey passes -db for the workspace's database
+unless you give one. kb runs in the workspace with no terminal input, so a
+verb kb keeps for a terminal (accepting a decision record, for example)
+refuses; run those yourself with ! kb ... .
 
-The knowledge base is independent of the RAG store (/help rag). KB holds
-hand-authored structured records; RAG holds embedded chunks from ingested
-documents. Use both: /kb inject to bring structured records into context,
-and RAG to retrieve relevant document passages automatically.
-
-# CONCEPTS
-
-  Project     — a named container for a body of work. One project can be
-                "active" at a time; /kb observe attaches to the active project.
-
-  Observation — a timestamped note attached to a project. Each observation
-                has a kind:
-
-                  note        — general remark
-                  finding     — empirical result
-                  decision    — a choice made and its rationale
-                  question    — open question to return to
-                  hypothesis  — testable prediction
-
-  Concept     — a named idea or term that can be referenced across multiple
-                projects and observations.
-
-# SUBCOMMANDS
-
-/kb status
-  Show the database path, project count, and observation count.
-
-/kb search TERM [TERM...]
-  Full-text search (FTS5) across all observations and concepts. Supports
-  quoted phrases and prefix wildcards:
+kb must be installed:
 
 ~~~
-  /kb search RAG embedding
+  go install github.com/rsdoiel/knowledge/cmd/kb@latest
+~~~
+
+KB holds hand-authored structured records and ingested documents.
+
+Add -json before the verb for machine-readable output. harvey does not add it.
+
+# EXAMPLES
+
+~~~
   /kb search "context window"
-  /kb search grpc*
+  /kb project list
+  /kb observation add --project harvey finding "chunk size 500 removes noise"
+  /kb record show harvey/DR-0048
+  /kb stats
 ~~~
+
+# HARVEY'S OWN VERBS
+
+Three things only harvey can do are not sent to kb.
 
 /kb inject [PROJECT]
   Format the knowledge base as Markdown and add it to the conversation
-  as a user message. With no argument, injects the active project (or all
-  projects if none is active). With a project name, injects only that project.
-
-~~~
-  /kb inject
-  /kb inject harvey
-~~~
-
-/kb project list
-  List all projects with ID, name, and status. The active project is
-  marked with *.
-
-/kb project add NAME [DESCRIPTION]
-  Create a project and set it as the active project.
-
-~~~
-  /kb project add harvey "terminal coding agent for Ollama"
-~~~
+  as a user message. With no argument, injects the current project (or all
+  projects if none is current). With a project name, injects only that project.
 
 /kb project use ID
-  Set an existing project as the active project by numeric ID.
+  Set the current project by numeric ID. inject, learn and memory recall use
+  it. (/kb project list shows the IDs.)
 
-/kb observe [KIND] TEXT
-  Record an observation against the active project. KIND defaults to
-  "note" if omitted. Valid kinds: note, finding, decision, question,
-  hypothesis.
-
-~~~
-  /kb observe finding RAG threshold of 0.3 eliminates noise on granite3-moe
-  /kb observe decision switched embedding model to nomic-embed-text
-  /kb observe question does bge-m3 outperform nomic on code retrieval?
-~~~
-
-/kb concept list
-  List all concepts with ID and description.
-
-/kb concept add NAME [DESCRIPTION]
-  Add a named concept to the knowledge base.
-
-~~~
-  /kb concept add RAG "retrieval-augmented generation"
-  /kb concept add "context window" "token budget for a single LLM call"
-~~~
+/kb learn
+  See LEARNING MODE.
 
 # LEARNING MODE
 
 /kb learn turns Harvey's own recorded sessions and hand-off notes into
 searchable knowledge. Every step ends with a human decision: nothing a model
 writes is trusted, or found by /kb search, until you accept it. All four
-steps work on the active project (/kb project use ID).
+steps work on the current project (/kb project use ID).
 
 /kb learn ingest [--min-words N] [--all] [--dry-run]
   List the hand-off notes and recorded sessions that are not yet in the
@@ -2676,6 +2304,49 @@ steps work on the active project (/kb project use ID).
   Tagging changes source text, so summaries of changed sections are marked
   stale; the closing line says how many.
 
+# DRAFTING OBSERVATIONS
+
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
+  Read a recorded session and ask a model what in it is worth remembering,
+  then write each answer to the knowledge base as a draft observation. A draft
+  is not searchable, not recalled into a prompt and not counted until you
+  promote it; harvey never promotes one. Nothing runs on its own: you type
+  this when you want it.
+
+  SESSION is a session name (harvey-session-20261030-143612) or the path of a
+  .jsonl log; with none it reads the session you are in. It reads what you
+  and the model said, and each tool call with its status and the start of its
+  output, in passes that fit the drafting model's context window. Skill and
+  knowledge-base text added to prompts is not read, and neither is anything
+  the log recorded at debug level.
+
+  The model is @route if given, else the active model (learn_model is for
+  /kb learn only). Each draft is signed "harvey MODEL", so the review queue
+  shows which model wrote it, and ends with a line "Drafted from SESSION#a..#b."
+  naming the events it came from.
+
+  The project is --project, else kb: {project: NAME} in agents/harvey.yaml,
+  else the workspace directory's name when a kb project has it; otherwise
+  /kb draft stops and lists the projects.
+
+  At most 5 drafts are written (--limit N changes that; --limit 0 writes all).
+  A proposal that repeats an observation already in the project, in any
+  status, or an earlier proposal of the run, is skipped and the report says
+  what it matched. A pass whose model call fails is reported and does not stop
+  the others; the exit code is that of the first failure. Ctrl-C once stops
+  after the pass in flight (its answer is kept, with what was already
+  written); Ctrl-C again cancels the request now, for a model that is stuck.
+  Tab after /kb draft offers the recorded sessions.
+
+  Review the drafts in a normal shell, because promoting needs a terminal:
+
+~~~
+  kb observation review list --project NAME
+  kb observation review promote ID
+~~~
+
+  This needs kb 0.0.30 or newer.
+
 # WORKFLOW EXAMPLE
 
 ~~~
@@ -2693,8 +2364,8 @@ answer questions about it, suggest next steps, or help resolve open questions.
 # SEE ALSO
 
   /memory recall         — search all knowledge silos including the KB
-  /rag ingest            — embed documents for semantic retrieval
-  /help learn            — overview of all three memory silos
+  /kb document ingest    — make a document searchable (the installed kb)
+  /help learn            — overview of the memory silos
 
 `
 
@@ -2710,7 +2381,7 @@ MEMORY — mine session recordings for memories and manage the memory store
 
 # SYNOPSIS
 
-/memory <mine|list|show|flag|forget|status|recall|profile> [args...]
+/memory <mine|list|show|flag|forget|status|recall> [args...]
 
 # DESCRIPTION
 
@@ -2770,27 +2441,9 @@ Fountain files in agents/memories/ inside the workspace.
         Show memory store location, total count, and breakdown by type.
 
   recall QUERY
-        Query all memory silos (workspace profile, project facts, experiential
-        memories, RAG chunks, and KB observations) and print grouped results.
-        Uses FTS5 full-text search plus cosine similarity when a RAG store is
-        configured. No token budget is applied — all matching results are shown.
-
-  profile show|update|use [name]
-        Manage the workspace profile.
-        "list"   — list active and archived profiles (IDs + descriptions).
-        "show"   — print the full content of the active profile document.
-        "edit"   — open the active profile in $EDITOR and re-save on close.
-        "use"    — switch to a new profile: writes a handoff document to
-                   agents/hand-off/, archives the current profile, selects a
-                   template (by name or interactive picker), saves it as the
-                   new profile, and resets history so the new context injects
-                   on the next turn. Alias: /profile use [name].
-        "rename" — rename the workspace in the active profile document.
-        "on"     — enable workspace profile injection at session start
-                   (sets memory.inject_on_start: true in harvey.yaml).
-        "off"    — disable workspace profile injection at session start
-                   (sets memory.inject_on_start: false in harvey.yaml).
-        "update" — deprecated alias for "edit".
+        Query all memory silos (project facts, experiential
+        memories, and KB observations) and print grouped results.
+        Uses FTS5 full-text search. No token budget is applied — all matching results are shown.
 
 # MEMORY TYPES
 
@@ -2826,10 +2479,10 @@ Each memory carries three enrichment fields set at mining time:
 # MEMORY INJECTION
 
 When a session starts, Harvey injects a [memory context] block into the
-conversation. Factual types (workspace_profile, project_fact) always appear
+conversation. The factual type (project_fact) always appears
 first. Experiential memories (tool_use, workflow, user_preference) are ranked
 by FTS5 full-text search and optionally cosine similarity weighted by the
-memory's confidence score. RAG chunks and KB observations follow if token
+memory's confidence score. KB observations follow if token
 budget permits.
 
 The budget is controlled by memory.budget_pct in harvey.yaml (default 0.25 of
@@ -2876,7 +2529,6 @@ memory before the review card is displayed.
   /memory mine
   /memory mine agents/sessions/harvey-session-20260525-140251.spmd
   /memory list --type workflow
-  /memory list --type workspace_profile
   /memory list --kind pitfall
   /memory list --type tool_use --kind workaround
   /memory show pipeline_confidence_extraction
@@ -2884,18 +2536,11 @@ memory before the review card is displayed.
   /memory forget old_pattern_a1b2c3
   /memory status
   /memory recall git repository error
-  /memory profile list
-  /memory profile show
-  /memory profile edit
-  /memory profile use web-developer
-  /memory profile rename "Harvey Web Developer"
 
 # SEE ALSO
 
-  /profile               — alias for /memory profile
   /recall QUERY          — alias for /memory recall
-  /help learn            — overview of all three memory silos
-  /help rag              — RAG store management
+  /help learn            — overview of the memory silos
   /help kb               — knowledge base management
 
 `
@@ -2912,63 +2557,50 @@ LEARN — how Harvey accumulates and retrieves knowledge
 
 # DESCRIPTION
 
-Harvey stores knowledge in three independent silos that are unified at
+Harvey stores knowledge in two independent silos that are unified at
 retrieval time. Understanding which silo to use for which kind of content
 is the key to getting consistently good results.
 
 
 # THE ONE DECISION RULE
 
-  Have a text file or document?        →  /rag ingest <file>
+  Have a text file or document?        →  /kb document ingest <file>
   Something useful happened in a session? →  /memory mine
-  Making an observation about an experiment? →  /kb observe
+  Making an observation about an experiment? →  /kb observation add
 
 
-# THE THREE SILOS
+# THE SILOS
 
   Silo            What belongs here          How to add       How it arrives
   ─────────────── ─────────────────────────  ───────────────  ─────────────────────
-  RAG store       Reference docs, API specs, /rag ingest      Per-prompt via
-                  code examples, PDF papers  <file>           /rag on (context)
-
   Memory store    Patterns observed during   /memory mine     Session-start via
                   sessions: what worked,     (interactive)    /memory recall
                   what the model got wrong,  auto-mines on
                   user preferences           session exit
 
-  Knowledge base  Research notes, named      /kb observe      On-demand via
-                  experiments, cross-project /kb project      /memory recall
-                  concepts and hypotheses    /kb concept
+  Knowledge base  Reference documents,       /kb document     On-demand via
+                  research notes, named      ingest, /kb      /memory recall
+                  experiments, concepts      observation add  and /kb search
 
-Retrieval from all three silos is unified:
+Retrieval from both silos is unified:
 
-  /memory recall <query>   — search all three silos, print ranked results
+  /memory recall <query>   — search both silos, print ranked results
   /recall <query>          — alias for /memory recall
 
-  /profile <list|show|edit|use|rename> [args...]
-                           — alias for /memory profile (manage workspace profile)
-  /profile list            — list active and archived profiles
-  /profile show            — print full content of the active profile
-  /profile edit            — open active profile in $EDITOR
-  /profile use [name]      — switch profile: saves handoff, archives old profile,
-                             selects new template, resets history
-  /profile rename NAME     — rename the workspace in the active profile
 
 
 # CHECKING WHAT YOU HAVE
 
-  /status          — shows active memories, unmined sessions, RAG chunk count
+  /status          — shows active memories and unmined sessions
   /hint            — prints actionable suggestions for improving results
   /memory status   — detailed memory store stats and budget advice
-  /rag status      — RAG store details: active store, chunk count, on/off
 
 
 # COMMON WORKFLOWS
 
-Ingest a PDF reference before starting a coding session:
+Ingest a reference document before starting a coding session:
 
-  /rag ingest Reference/papers/oberon2.pdf
-  /rag on
+  /kb document ingest Reference/papers/oberon2.md
 
 Mine learnings from last session before starting the next:
 
@@ -2985,9 +2617,7 @@ Check what would improve the current session:
 
 # SEE ALSO
 
-  /profile        — alias for /memory profile (manage workspace profile)
   /recall QUERY   — alias for /memory recall (search all silos)
-  /help rag       — full RAG command reference
   /help memory    — full memory command reference
   /help kb        — full knowledge base reference
 
@@ -3551,7 +3181,7 @@ The full conversation history is NOT included. This means:
   - Per-step token usage is constant regardless of plan length.
   - The model has no memory of earlier steps beyond the plan file.
   - For steps that need context from prior steps, inject that context
-    explicitly via /context add before running /plan next, or note it
+    explicitly via /pin --text before running /plan next, or note it
     directly in agents/plan.md.
 
 # WORKFLOW EXAMPLE
@@ -3622,7 +3252,7 @@ then returns to the Harvey prompt.
                 Default: 10.
 
   PROMPT        Free text sent as a chat turn each iteration. The same
-                RAG augmentation, tool-loop execution, and recording
+                tool-loop execution and recording
                 that apply to normal chat apply here.
 
   /COMMAND      A slash command dispatched each iteration, exactly as if
@@ -3633,8 +3263,8 @@ then returns to the Harvey prompt.
 
 # ITERATION BEHAVIOUR
 
-Chat iterations use the same model call as normal chat — same RAG
-augmentation, same tool-loop-or-plain-chat branch, same stats recording
+Chat iterations use the same model call as normal chat — same
+tool-loop-or-plain-chat branch, same stats recording
 and Fountain recording — so looping a prompt behaves identically to
 typing it by hand repeatedly. Two things are deliberately excluded:
 
@@ -3815,7 +3445,7 @@ Detail view for a specific model:
 
 # SEE ALSO
 
-  /model list         — models across llamafile, llama.cpp, and Ollama
+  /model list         — models across Ollama and hailo-ollama
   /model use NAME     — switch models (an Ollama model is probed on first alias)
   ollama show MODEL   — raw Modelfile, run in a shell
   /help model
@@ -3841,28 +3471,45 @@ Detail view for a specific model:
 # DESCRIPTION
 
 {app_name} is an LLM evaluation harness for Harvey. It runs a corpus of prompts
-against one or more Ollama models (or a llamafile binary) and produces a
+against one or more models on Ollama and hailo-ollama and produces a
 Markdown report plus a JSON results file for human review and automated
 checking.
 
 The prompt corpus is defined in a YAML file (default:
-agents/assay/corpus.yaml). Each entry specifies a category, a prompt,
-automated checks (contains, not_contains, compiles, go_vet), and
-human-review questions. {app_name} sends each prompt to each model, records
+agents/assay/corpus.yaml). Each entry specifies a category (the capability
+it tests, such as go, sql or tool-call), a prompt, an optional tokens: size
+hint (the prompt's approximate size, for probes that test a model's window),
+automated checks (contains, not_contains, compiles, go_vet, and the profile
+checks below), and human-review questions. An unknown key, a duplicate or empty id, or a
+negative tokens: is an error (a misspelt check would otherwise never run). {app_name} sends each prompt to each model, records
 the response, runs all automated checks, and writes a summary table plus
 per-prompt results to the output directory.
 
-When a RAG store is provided via -rag-db, {app_name} embeds each prompt and
-injects the top-k retrieved chunks as context before calling the model.
-With -rag-compare, every prompt is run twice (once without RAG, once with)
-and a per-check delta table is appended to the report.
+The profile checks probe what separates models on this hardware. tool_call
+({name, arg, contains}) offers the model Harvey's read-only tools (read_file,
+list_files, search_files) and passes when it calls the right one with the right
+argument, as a structured call or as the JSON block Harvey reads from prose;
+no_tool passes when the model makes no call at all. A call written as bare JSON
+text in the reply is not run by Harvey, so it fails tool_call (the report says the
+model wrote it as plain text) and fails no_tool. A model that cannot take
+tools fails the check and the run goes on. uses_tail MARKER pads the prompt with
+neutral filler to its tokens: size (Qwen-family tokens, about 3.3 characters each
+for this filler; llama3.2 counts about 10% fewer) and puts the instruction, which must contain
+MARKER, last; it passes when the reply carries MARKER, so a model that drops what
+is past its window fails (the report says the reply "did not reflect" the marker,
+which is not proof the model never read it). exact REGEXP passes when the whole
+trimmed reply matches. The tool probes send no Harvey system prompt, so they are stricter than a
+session. A uses_tail prompt the server cannot take at all (an HTTP error or a
+stream that stops early, as hailo does past its window) fails that check naming
+the prompt's size; it does not fail the run. A refused connection still does.
+A failing check is a result, never an error.
 
 With -guide-compare and -guide-file, every prompt is run twice (once with
 no system message, once with the guide file's content as a system message)
 and a per-check delta table is appended to the report — useful for testing
 whether an always-on guide (a HARVEY.md section, a skill's prose) still
 changes model behavior once a computational sensor exists for the same
-failure mode. Mutually exclusive with -rag-compare.
+failure mode.
 
 # OPTIONS
 
@@ -3871,49 +3518,45 @@ failure mode. Mutually exclusive with -rag-compare.
   Default: agents/assay/corpus.yaml
 
 -models MODEL[,MODEL...]
-: Comma-separated list of Ollama model names to evaluate.
-  Default: all models currently available on the Ollama server.
+: Comma-separated list of models to evaluate, each as service/model:
+  ollama/qwen2.5-coder:1.5b or hailo/llama3.2:3b. A name with no service
+  is looked up on both servers: on one it runs there, on both it is a usage
+  error that names the two choices, on neither it is sent to Ollama.
+  Default: every model on each server that answers (a server that does not
+  answer is skipped with a note on stderr).
 
--category NAME
-: Run only prompts in the named category. Omit to run all categories.
-
--llamafile PATH
-: Path to a llamafile binary to evaluate. {app_name} starts the llamafile
-  server automatically before the run and stops it when finished.
-  The model name is derived from the binary filename.
-  Mutually exclusive with -llamacpp.
-
--llamacpp URL
-: Base URL of a running llama-server instance, e.g. http://localhost:8081.
-  The user is responsible for starting and stopping llama-server.
-  If -models is not set, {app_name} queries GET /v1/models to discover
-  the loaded model. Mutually exclusive with -llamafile.
+-category NAME[,NAME...]
+: Run only prompts in the named categories (capabilities). Omit to run all
+  categories. A name the corpus does not have is an error (exit 1) that lists
+  the categories it does have, even when other names match.
 
 -ollama URL
-: Base URL of the Ollama server (also used for RAG embeddings when
-  -rag-db is set with --llamafile or --llamacpp).
+: Base URL of the Ollama server.
   Default: http://localhost:11434
+
+-hailo URL
+: Base URL of the hailo-ollama server.
+  Default: http://localhost:8000
+
+-warmup
+: Send one short unrecorded request to each model before its prompts, so the
+  profile shows warm timings and the cold start (the first call after a model
+  is loaded can take 20 seconds or more) is reported once, per model.
+  On by default; -warmup=false skips it. A warm-up that fails is a note on
+  stderr, not a failure of the run.
+
+-runs N
+: Run each prompt N times (default 1). The profile reports pass/trials, so
+  more runs make a row less thin.
+
+-timeout SECONDS
+: How long to wait for one model call (default 120). A call that takes
+  longer fails as a service that could not do the work (exit 69).
 
 -output PATH
 : Directory to write the report (report.md) and results (results.json).
   Default: $WORKSPACE/assay-results/assay-TIMESTAMP/ if run inside a
   Harvey workspace, or assay-results/assay-TIMESTAMP/ otherwise.
-
--rag-db PATH
-: Path to a Harvey RAG store (SQLite). When set, {app_name} embeds each
-  prompt and prepends retrieved context chunks before calling the model.
-
--rag-top-k N
-: Number of RAG chunks to retrieve per prompt when -rag-db is set.
-  Default: 3
-
--rag-embed-model MODEL
-: Ollama embedding model used to embed prompts for RAG retrieval.
-  Default: nomic-embed-text
-
--rag-compare
-: Run each prompt twice — once without RAG context and once with — and
-  append a per-check delta table to the report. Requires -rag-db.
 
 -guide-file PATH
 : Path to a plain text file whose content becomes a system message sent
@@ -3924,7 +3567,7 @@ failure mode. Mutually exclusive with -rag-compare.
 : Run each prompt twice — once with no system message (identical to
   {app_name}'s default dispatch) and once with -guide-file's content sent
   as a system message — and append a per-check delta table to the report.
-  Requires -guide-file. Mutually exclusive with -rag-compare.
+  Requires -guide-file.
 
 -h, -help, --help
 : Display this help message.
@@ -3947,23 +3590,25 @@ thing that failed, using the workspace's exit codes:
   failures, and exit 0.
 
 1
-: Nothing to run: no prompts match -category, or the server has no models.
+: Nothing to run: no prompts match -category, or no server has models.
 
 2
 : The command line is wrong: an unknown option, an option without its value, a
-  surplus argument, or options that conflict (-rag-compare without -rag-db,
-  -guide-compare without -guide-file, -llamafile with -llamacpp).
+  surplus argument, a model name that is on both servers, -runs below 1,
+  -timeout of 0 or less, or options that conflict (-guide-compare without
+  -guide-file).
 
 65
 : A file {app_name} read is wrong: a corpus that will not parse or has no
-  prompts, or a RAG store it cannot use.
+  prompts.
 
 66
-: A named input is missing: the -corpus, -guide-file or -llamafile file.
+: A named input is missing: the -corpus or -guide-file file.
 
 69
-: A service cannot be reached: Ollama or llama-server while listing models, a
-  llamafile that will not start, or a model call that failed. The run still
+: A service cannot be reached: neither Ollama nor hailo-ollama answered while
+  listing models, a service named in -models is down, or a model call
+  that failed. The run still
   finishes, writes its report, and says how many calls failed.
 
 70
@@ -3973,7 +3618,7 @@ thing that failed, using the workspace's exit codes:
 : The output directory cannot be created.
 
 74
-: report.md or results.json could not be written. The other is still tried.
+: report.md, results.json or summary.json could not be written. The others are still tried.
 
 77
 : The operating system refused access to a file or directory.
@@ -3984,7 +3629,8 @@ table above.
 
 # OUTPUT
 
-{app_name} writes two files to the output directory:
+{app_name} writes three files to the output directory, and prints the profile at
+the end of the run:
 
 report.md
 : Markdown report containing a summary table (model x prompts x
@@ -3993,7 +3639,37 @@ report.md
 
 results.json
 : Machine-readable JSON array of all prompt results, including the full
-  model response, individual check outcomes, and timing data.
+  model response, individual check outcomes, and timing data (time to first
+  token and the decode rate after it).
+
+summary.json
+: The profile and the hints for scripts and kb (with the rule table): for each model its cold start and warm
+  median timings, and for each model and capability the trials passed, the
+  trials run, the failed calls, and the median timings. report.md carries the
+  same table under "Profile". A failed call is not a trial; it is counted
+  apart so that a timeout does not read as a model that cannot do the task.
+
+# HINTS
+
+At the end of a run assay prints hints, advice on what to route to Ollama and
+what to hailo-ollama, and report.md lists them with the rules that made them.
+A hint is advice from one run, never a change to harvey.yaml. Each is built
+from the profile, so it is only as good as the corpus and the number of trials
+behind it; a hint with fewer than 3 trials ends with (thin: n trials), and
+-runs 3 or more removes that.
+
+A target is reliable on a capability at a pass rate of 0.8 or more and weak
+below 0.5. If no target is reliable the hint is neither, naming the best. If
+reliable targets are on one engine only, the hint names that engine and the
+other's best. If both are reliable the hint is either, unless one engine's
+first token is 1.5 times and at least a second quicker, then that engine. For long-prompt a
+target "reads up to" the largest probe size at which any trial reflected the
+marker, with every smaller size also read, and the hint says what happened at
+the next size, a server error or a lost marker. A size where only some trials
+passed is marked flaky: loss past the window fails every trial, so a mixed
+result is sampling noise. For tool-call a target is tool-ready when it passes 0.8 of the
+tool_call probes and every no_tool control, and the hint says which part
+failed. A cold start over 10 seconds says to keep the model loaded.
 
 # EXAMPLES
 
@@ -4009,16 +3685,10 @@ Run only the go-crosswalk category against a specific model:
   assay -models qwen2.5-coder:7b -category go-crosswalk
 ~~~
 
-Evaluate a llamafile binary:
+Compare a run with and without a guide file as the system message:
 
 ~~~
-  assay -llamafile ~/models/qwen2.5-coder-7b.llamafile
-~~~
-
-Run with RAG context injection and comparison:
-
-~~~
-  assay -models llama3.1:8b -rag-db agents/rag/harvey.db -rag-compare
+  assay -models llama3.1:8b -guide-file HARVEY.md -guide-compare
 ~~~
 
 Write results to a custom directory:

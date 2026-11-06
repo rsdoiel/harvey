@@ -1,0 +1,40 @@
+Title: Harvey Session
+Credit: Recorded by Harvey
+Author: TESTER
+Date: <ts>
+Draft date: <date>
+Model: LLAMA3.2 (ollama)
+Backend: ollama
+
+
+FADE IN:
+
+
+INT. SKILL DEMO <ts>
+
+Harvey executes the demo skill.
+
+A demonstration skill
+
+DEMO
+Do the demonstration.
+
+
+
+INT. HARVEY AND TESTER TALKING <ts>
+
+Harvey and TESTER are in chat mode. Model: LLAMA3.2. Workspace: <ws>.
+
+TESTER
+hello
+
+HARVEY
+Forwarding to LLAMA3.2.
+
+LLAMA3.2
+FIRST
+
+ollama (llama3.2:3b) · 1 reply + 7 ctx · <dur> · <rate> tok/s
+
+
+THE END.

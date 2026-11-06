@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 /** CodeBlock holds a single fenced code block parsed from a markdown response.
@@ -46,11 +44,11 @@ func isToolCallBlock(b CodeBlock) bool {
 	return hasArgs || hasParams
 }
 
-// ParseProseToolCalls converts tool-call code blocks into anyllm.ToolCall values.
+// ParseProseToolCalls converts tool-call code blocks into ToolCall values.
 // It handles both qwen2.5 ("arguments") and llama3.2 ("parameters") key names.
 // Blocks that do not parse as tool calls are silently skipped.
-func ParseProseToolCalls(blocks []CodeBlock) []anyllm.ToolCall {
-	var calls []anyllm.ToolCall
+func ParseProseToolCalls(blocks []CodeBlock) []ToolCall {
+	var calls []ToolCall
 	for i, b := range blocks {
 		if !isToolCallBlock(b) {
 			continue
@@ -70,10 +68,10 @@ func ParseProseToolCalls(blocks []CodeBlock) []anyllm.ToolCall {
 		if !ok {
 			continue
 		}
-		calls = append(calls, anyllm.ToolCall{
+		calls = append(calls, ToolCall{
 			ID:   fmt.Sprintf("prose_%d", i),
 			Type: "function",
-			Function: anyllm.FunctionCall{
+			Function: FunctionCall{
 				Name:      name,
 				Arguments: string(argsRaw),
 			},
@@ -86,7 +84,7 @@ func ParseProseToolCalls(blocks []CodeBlock) []anyllm.ToolCall {
 var apertusToolCallRE = regexp.MustCompile(`<SPECIAL_71>([\s\S]*?)<SPECIAL_72>`)
 
 /** ParseApertusToolCalls scans raw response text for Apertus-native tool call
- * blocks and returns them as anyllm.ToolCall values.
+ * blocks and returns them as ToolCall values.
  *
  * Apertus emits tool calls as <SPECIAL_71>[{"name": args}, ...]<SPECIAL_72>
  * where each array element is a single-key object: the key is the function name
@@ -96,18 +94,18 @@ var apertusToolCallRE = regexp.MustCompile(`<SPECIAL_71>([\s\S]*?)<SPECIAL_72>`)
  *   text (string) — raw LLM response text to scan.
  *
  * Returns:
- *   []anyllm.ToolCall — parsed tool calls; nil when none found.
+ *   []ToolCall — parsed tool calls; nil when none found.
  *
  * Example:
  *   calls := ParseApertusToolCalls(`<SPECIAL_71>[{"read_file": {"path": "x.go"}}]<SPECIAL_72>`)
  *   // calls[0].Function.Name == "read_file"
  */
-func ParseApertusToolCalls(text string) []anyllm.ToolCall {
+func ParseApertusToolCalls(text string) []ToolCall {
 	matches := apertusToolCallRE.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
 		return nil
 	}
-	var calls []anyllm.ToolCall
+	var calls []ToolCall
 	for i, m := range matches {
 		if len(m) < 2 {
 			continue
@@ -118,10 +116,10 @@ func ParseApertusToolCalls(text string) []anyllm.ToolCall {
 		}
 		for j, entry := range entries {
 			for toolName, argsRaw := range entry {
-				calls = append(calls, anyllm.ToolCall{
+				calls = append(calls, ToolCall{
 					ID:   fmt.Sprintf("apertus_%d_%d", i, j),
 					Type: "function",
-					Function: anyllm.FunctionCall{
+					Function: FunctionCall{
 						Name:      toolName,
 						Arguments: string(argsRaw),
 					},

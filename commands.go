@@ -17,8 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // sensitiveCmdEnvVars contains environment variable names that should be
@@ -204,32 +202,24 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdClear,
 		},
 		"kb": {
-			Usage:       "/kb <status|search|inject|project|observe|concept|source|retract|cite|show|learn|check-retractions> [args...]",
-			Description: "Manage and query the workspace knowledge base",
+			Usage:       "/kb [OPTIONS] VERB [ARGS...]   (runs the installed kb; inject and learn are harvey's own)",
+			Description: "Run the installed kb on the workspace knowledge base",
 			Handler:     cmdKB,
-			Subcommands: []string{"status", "search", "inject", "project", "observe", "concept", "source", "retract", "cite", "show", "learn", "check-retractions"},
+			Subcommands: kbVerbNames(),
+			ArgCompletion: map[string]func(*Agent) []string{
+				"draft": draftSessionCandidates,
+			},
 		},
 		"memory": {
-			Usage:       "/memory <mine|list|show|flag|forget|status|recall|profile> [args...]",
+			Usage:       "/memory <mine|list|show|flag|forget|status|recall> [args...]",
 			Description: "Mine sessions for memories and manage the memory store",
 			Handler:     cmdMemory,
-			Subcommands: []string{"mine", "list", "show", "flag", "forget", "status", "recall", "profile"},
+			Subcommands: []string{"mine", "list", "show", "flag", "forget", "status", "recall"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"list":   memoryTypeCandidates,
 				"show":   memoryIDCandidates,
 				"flag":   memoryIDCandidates,
 				"forget": memoryIDCandidates,
-			},
-		},
-		"rag": {
-			Usage:       "/rag <list|new NAME|use NAME|drop NAME|ingest PATH|status|query TEXT|on|off>",
-			Description: "Manage named RAG knowledge stores for context-augmented generation",
-			Handler:     cmdRag,
-			Subcommands: []string{"list", "new", "use", "show", "remove", "drop", "ingest", "status", "query", "on", "off"},
-			ArgCompletion: map[string]func(*Agent) []string{
-				"use":    ragStoreNameCandidates,
-				"remove": ragStoreNameCandidates,
-				"drop":   ragStoreNameCandidates,
 			},
 		},
 		"files": {
@@ -294,10 +284,24 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdSummarize,
 		},
 		"context": {
-			Usage:       "/context <show|add TEXT...|clear>",
-			Description: "Manage pinned context that survives /clear",
+			Usage:       "/context",
+			Description: "Show what the model sees on the next turn: pins, summaries, dialog, and what is left out",
 			Handler:     cmdContext,
-			Subcommands: []string{"show", "add", "clear"},
+		},
+		"pin": {
+			Usage:       "/pin <EVENT_ID|kb:TYPE:ID|--text TEXT...>",
+			Description: "Keep text, a session event or a knowledge-base row in front of the model for this session",
+			Handler:     cmdPin,
+		},
+		"unpin": {
+			Usage:       "/unpin <N|PIN_ID|REF>",
+			Description: "Stop keeping a pin in front of the model",
+			Handler:     cmdUnpin,
+		},
+		"pins": {
+			Usage:       "/pins",
+			Description: "List the pins with their cost and share of the prompt limit",
+			Handler:     cmdPins,
 		},
 		"audit": {
 			Usage:       "/audit <show [n]|clear|status>",
@@ -316,12 +320,6 @@ func (a *Agent) registerCommands() {
 			Description: "Show security settings status (safe mode, permissions, audit)",
 			Handler:     cmdSecurity,
 			Subcommands: []string{"status"},
-		},
-		"record": {
-			Usage:       "/record <start [FILE]|stop|status>",
-			Description: "Record session exchanges to a Markdown file",
-			Handler:     cmdRecord,
-			Subcommands: []string{"start", "stop", "status"},
 		},
 		"session": {
 			Usage:       "/session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>",
@@ -403,7 +401,7 @@ func (a *Agent) registerCommands() {
 		},
 		"model": {
 			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|limit [MODEL] N|alias ...]",
-			Description: "Unified model management across llamafile, llama.cpp, and Ollama backends",
+			Description: "Unified model management across Ollama and hailo-ollama",
 			Handler:     cmdModel,
 			Subcommands: []string{"list", "use", "pull", "show", "status", "stop", "clean", "mode", "limit", "alias"},
 			ArgCompletion: map[string]func(*Agent) []string{
@@ -418,7 +416,7 @@ func (a *Agent) registerCommands() {
 		},
 		"hint": {
 			Usage:       "/hint",
-			Description: "Show suggestions for improving results (RAG, memory, KB)",
+			Description: "Show suggestions for improving results (memory, KB)",
 			Handler:     cmdHint,
 		},
 		"recall": {
@@ -426,17 +424,6 @@ func (a *Agent) registerCommands() {
 			Description: "Alias for /memory recall — search all knowledge silos",
 			Handler: func(a *Agent, args []string, out io.Writer) error {
 				return cmdMemory(a, append([]string{"recall"}, args...), out)
-			},
-		},
-		"profile": {
-			Usage:       "/profile <list|show|edit|use|rename|on|off> [args...]",
-			Description: "Alias for /memory profile — manage workspace profile",
-			Handler: func(a *Agent, args []string, out io.Writer) error {
-				return cmdMemory(a, append([]string{"profile"}, args...), out)
-			},
-			Subcommands: []string{"list", "show", "edit", "use", "rename", "on", "off"},
-			ArgCompletion: map[string]func(*Agent) []string{
-				"use": profileTemplateNameCandidates,
 			},
 		},
 		"format": {
@@ -544,7 +531,10 @@ func (a *Agent) registerSkillCommands() {
  * Example:
  *   exit, err := agent.dispatch("/kb status", os.Stdout)
  */
-func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
+func (a *Agent) dispatch(input string, out io.Writer) (quit bool, err error) {
+	// A command is logged when it finishes, so its effects come first and the
+	// event can carry its status (the exit class name, "ok" on success).
+	defer func() { a.logCommand(input, err) }()
 	parts := strings.Fields(strings.TrimPrefix(input, "/"))
 	if len(parts) == 0 {
 		return false, nil
@@ -619,9 +609,9 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintln(out, "Backend:   none")
 	} else {
 		tag := ""
-		if ac, ok := a.Client.(*AnyLLMClient); ok {
+		if ac, ok := a.Client.(*OllamaChatClient); ok {
 			switch ac.ProviderName() {
-			case "ollama", "llamafile", "llamacpp":
+			case "ollama":
 				if a.Backend != nil && a.Backend.StartedByHarvey() {
 					tag = " [Harvey]"
 				} else {
@@ -629,13 +619,22 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 				}
 			}
 		}
-		fmt.Fprintf(out, "Backend:   %s%s\n", a.Client.Name(), tag)
+		fmt.Fprintf(out, "Backend:   %s%s\n", a.clientDisplay(a.Client), tag)
 	}
 	if a.Config.Debug {
-		fmt.Fprintf(out, "Debug:     on (%s)\n", a.DebugLog.Path())
+		if a.SessionLog != nil {
+			fmt.Fprintf(out, "Debug:     on (level-debug events in %s)\n", a.SessionLog.Path())
+		} else {
+			fmt.Fprintln(out, "Debug:     on")
+		}
 	}
 	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
-	if _, ok := a.Client.(*AnyLLMClient); ok && len(a.History) > 0 {
+	if _, ok := a.Client.(*OllamaChatClient); ok {
+		if n := a.WindowLimit().Notice(); n != "" {
+			fmt.Fprintf(out, "Window:    %s\n", strings.TrimSuffix(strings.TrimPrefix(n, "Context window "), "."))
+		}
+	}
+	if _, ok := a.Client.(*OllamaChatClient); ok && len(a.History) > 0 {
 		n, limit, exact := a.contextUsage()
 		qualifier := "~"
 		if exact {
@@ -689,32 +688,6 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 			}
 			fmt.Fprintln(out)
 		}
-		// Active workspace profile
-		if profiles, err := store.List(string(MemoryTypeWorkspaceProfile)); err == nil {
-			if len(profiles) > 0 {
-				fmt.Fprintf(out, "Profile:   %s (%s)\n", profiles[0].Description, profiles[0].ID)
-			} else {
-				fmt.Fprintln(out, "Profile:   (none — run /profile use to set one)")
-			}
-		}
-	}
-	// RAG summary
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		ragState := "off"
-		if a.RagOn {
-			ragState = "on"
-		}
-		if a.Rag != nil {
-			if n, err := a.Rag.Count(); err == nil {
-				fmt.Fprintf(out, "RAG:       %s — store %q, %d chunk(s)\n", ragState, entry.Name, n)
-			} else {
-				fmt.Fprintf(out, "RAG:       %s — store %q\n", ragState, entry.Name)
-			}
-		} else {
-			fmt.Fprintf(out, "RAG:       %s — store %q (not open)\n", ragState, entry.Name)
-		}
-	} else {
-		fmt.Fprintln(out, "RAG:       not configured")
 	}
 	if a.Config.Security.SafeMode {
 		fmt.Fprintln(out, "Safe mode: on")
@@ -744,13 +717,10 @@ func cmdClear(a *Agent, _ []string, out io.Writer) error {
  * Example:
  *   /hint
  */
-// allModelNames returns all registered model names across llamafile and ollama
+// allModelNames returns all registered model aliases
 // for use in tab completion.
 func allModelNames(a *Agent) []string {
 	var names []string
-	for _, e := range a.Config.Llamafile.Models {
-		names = append(names, e.Name)
-	}
 	for alias := range a.Config.ModelAliases {
 		names = append(names, alias)
 	}
@@ -791,7 +761,7 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 			return nil
 		}
 		// Not in the registry or the aliases: search the same list the picker shows
-		// (llamafile, llama.cpp and Ollama models), by name or by a unique prefix.
+		// (Ollama and hailo-ollama models), by name or by a unique prefix.
 		if models, lerr := listLocalModels(a); lerr == nil {
 			if m, ambiguous, ok := matchModel(models, args[1]); ok {
 				return defaultClass(ClassUnavailable, useSelectedModel(a, m, out, false))
@@ -840,36 +810,16 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 // are preserved because their backend cannot be determined safely.
 func cmdModelClean(a *Agent, out io.Writer) error {
 	// Collect live model names per engine.
-	var liveOllama, liveLlamafile, liveLlamaCpp []string
-
-	agentsDir := ""
-	if a.Workspace != nil {
-		agentsDir = a.Workspace.Root + "/agents"
-	}
-	workspaceRoot := ""
-	if a.Workspace != nil {
-		workspaceRoot = a.Workspace.Root
-	}
-
-	lb := NewLlamafileBackend(a.Config, agentsDir, workspaceRoot)
-	if models, err := lb.ListModels(); err == nil {
-		for _, m := range models {
-			liveLlamafile = append(liveLlamafile, m.Name)
-		}
-	}
-
-	cb := NewLlamaCppBackend(a.Config, agentsDir)
-	if models, err := cb.ListModels(); err == nil {
-		for _, m := range models {
-			liveLlamaCpp = append(liveLlamaCpp, m.Name)
-		}
-	}
+	var liveOllama []string
 
 	var liveHailo []string
 	if a.ollamaFamily().Relabelled {
 		migrateRelabelledAliases(a, out)
 	}
 	for _, m := range a.listFamilyModels() {
+		if m.ServiceName() != m.Engine {
+			continue // a configured service; its aliases are left alone
+		}
 		if m.Engine == "hailo" {
 			liveHailo = append(liveHailo, m.Name)
 		} else {
@@ -877,7 +827,7 @@ func cmdModelClean(a *Agent, out io.Writer) error {
 		}
 	}
 
-	n, err := pruneStaleModelRefs(a, liveOllama, liveLlamafile, liveLlamaCpp, liveHailo, out)
+	n, err := pruneStaleModelRefs(a, liveOllama, liveHailo, out)
 	if err != nil {
 		return err
 	}
@@ -889,59 +839,23 @@ func cmdModelClean(a *Agent, out io.Writer) error {
 	return nil
 }
 
-// cmdModelShowEntry prints details for the named model, or the active model when name is "".
-// For llamafile models it shows path, size, and context length.
+// cmdModelShowEntry prints the active model, or reports that the named model
+// is not the active one.
 func cmdModelShowEntry(a *Agent, name string, out io.Writer) error {
-	explicit := name != ""
-	if name == "" {
-		label := activeModelLabel(a)
-		if a.Client != nil {
-			fmt.Fprintf(out, "  Active model: %s\n", green(label))
-		} else {
-			fmt.Fprintf(out, "  Active model: %s\n", yellow(label))
-		}
-		// If the active model is a llamafile entry, show details too.
-		if a.Config.Llamafile.Active != "" {
-			name = a.Config.Llamafile.Active
-		}
+	label := activeModelLabel(a)
+	if name != "" && !strings.EqualFold(name, label) {
+		return Negativef("model %q is not the active model (%s) — see /model list", name, label)
 	}
-	if name == "" {
-		fmt.Fprintln(out, "  No active llamafile model.")
-		return nil
-	}
-	entry := a.Config.LlamafileEntryByName(name)
-	if entry == nil {
-		if !explicit {
-			// The active model was already shown; its llamafile entry is not
-			// registered, which is a status, not a failure.
-			fmt.Fprintf(out, "  llamafile %q not found.\n", name)
-			return nil
-		}
-		return Negativef("llamafile %q not found", name)
-	}
-	active := ""
-	if entry.Name == a.Config.Llamafile.Active {
-		active = " (active)"
-	}
-	fmt.Fprintf(out, "  Name:    %s%s\n", entry.Name, active)
-	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-	fmt.Fprintf(out, "  Path:    %s\n", absPath)
-	if info, err := os.Stat(absPath); err == nil {
-		fmt.Fprintf(out, "  Size:    %s\n", llamafileFormatBytes(info.Size()))
+	if a.Client != nil {
+		fmt.Fprintf(out, "  Active model: %s\n", green(label))
 	} else {
-		fmt.Fprintln(out, "  Size:    (file not found)")
-	}
-	if entry.ContextLength > 0 {
-		fmt.Fprintf(out, "  Context: %d tokens\n", entry.ContextLength)
-	} else {
-		fmt.Fprintln(out, "  Context: unknown")
+		fmt.Fprintf(out, "  Active model: %s\n", yellow(label))
 	}
 	return nil
 }
 
 // cmdModelList prints all locally available models across every backend.
-// It uses aggregateModels so llamafile, llama.cpp, and Ollama entries
-// appear together without separate per-engine commands.
+// It uses aggregateModels so Ollama and hailo-ollama entries appear together.
 func cmdModelList(a *Agent, out io.Writer) error {
 	models, err := aggregateModels(a)
 	if err != nil {
@@ -955,23 +869,24 @@ func cmdModelList(a *Agent, out io.Writer) error {
 	activeEngine := ""
 	activeModel := ""
 	if a.Backend != nil {
-		activeEngine = a.Backend.Name()
+		activeEngine = a.activeServiceName()
 		activeModel = a.Backend.ActiveModel()
-	} else if a.Config.Llamafile.Active != "" {
-		activeEngine = "llamafile"
-		activeModel = a.Config.Llamafile.Active
 	} else if a.Config.Ollama.Model != "" {
 		activeEngine = "ollama"
 		activeModel = a.Config.Ollama.Model
 	}
 
 	for _, m := range models {
-		active := m.Engine == activeEngine && strings.EqualFold(m.Name, activeModel)
+		active := m.ServiceName() == activeEngine && strings.EqualFold(m.Name, activeModel)
 		marker := "  "
 		if active {
 			marker = "→ "
 		}
-		fmt.Fprintf(out, "  %s%-30s (%s)\n", marker, m.Name, m.EngineLabel())
+		if a.showService() {
+			fmt.Fprintf(out, "  %s%-30s\n", marker, a.displayModel(m.ServiceName(), m.Name)+notPulledNote(m))
+		} else {
+			fmt.Fprintf(out, "  %s%s\n", marker, m.Name+notPulledNote(m))
+		}
 	}
 	return nil
 }
@@ -982,65 +897,18 @@ func cmdModelStatus(a *Agent, out io.Writer) error {
 		fmt.Fprintln(out, "  No active backend.")
 		return nil
 	}
-	switch a.Backend.Name() {
-	case "llamafile":
-		active := a.Config.Llamafile.Active
-		if active == "" {
-			active = "(none)"
-		}
-		reachable := "no"
-		if ProbeLlamafile(a.Config.Llamafile.URL) {
-			reachable = "yes"
-		}
-		managed := "no"
-		if a.Backend.StartedByHarvey() {
-			managed = "yes (started by Harvey)"
-		}
-		fmt.Fprintf(out, "  Active model:    %s\n", active)
-		fmt.Fprintf(out, "  API URL:         %s\n", a.Config.Llamafile.URL)
-		fmt.Fprintf(out, "  Reachable:       %s\n", reachable)
-		fmt.Fprintf(out, "  Process managed: %s\n", managed)
-		fmt.Fprintf(out, "  Models dir:      %s\n", a.Config.Llamafile.ModelsDir)
-		fmt.Fprintf(out, "  Registered:      %d model(s)\n", len(a.Config.Llamafile.Models))
-	case "llamacpp":
-		cfg := &a.Config.LlamaCpp
-		url := cfg.URL
-		if url == "" {
-			url = "http://127.0.0.1:8081"
-		}
-		reachable := "no"
-		if probeLlamaCpp(url) {
-			reachable = "yes"
-		}
-		managed := "no"
-		if a.Backend.StartedByHarvey() {
-			managed = "yes (started by Harvey)"
-		}
-		active := a.Backend.ActiveModel()
-		if active == "" {
-			active = "(none)"
-		}
-		fmt.Fprintf(out, "  Active model:    %s\n", active)
-		fmt.Fprintf(out, "  API URL:         %s\n", url)
-		fmt.Fprintf(out, "  Reachable:       %s\n", reachable)
-		fmt.Fprintf(out, "  Managed:         %s\n", managed)
-		if cfg.GPULayers > 0 {
-			fmt.Fprintf(out, "  GPU layers:      %d\n", cfg.GPULayers)
-		}
-	default:
-		label := activeModelLabel(a)
-		reachable := probeActiveBackend(a)
-		status := red("✗ not reachable")
-		if reachable {
-			status = green("✓ reachable")
-		}
-		fmt.Fprintf(out, "  Model:  %s\n", label)
-		fmt.Fprintf(out, "  Status: %s\n", status)
+	label := activeModelLabel(a)
+	reachable := probeActiveBackend(a)
+	status := red("✗ not reachable")
+	if reachable {
+		status = green("✓ reachable")
 	}
+	fmt.Fprintf(out, "  Model:  %s\n", label)
+	fmt.Fprintf(out, "  Status: %s\n", status)
 	return nil
 }
 
-// cmdModelStop stops the active managed backend (llamafile or llama.cpp).
+// cmdModelStop stops the active managed backend.
 // Backends not started by Harvey are not stopped.
 func cmdModelStop(a *Agent, out io.Writer) error {
 	if a.Backend == nil {
@@ -1096,7 +964,7 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 	}
 
 	activeModelName := func() (string, error) {
-		ac, ok := a.Client.(*AnyLLMClient)
+		ac, ok := a.Client.(*OllamaChatClient)
 		if !ok {
 			return "", Negativef("no active Ollama model")
 		}
@@ -1189,7 +1057,7 @@ func cmdModelLimit(a *Agent, args []string, out io.Writer) error {
 		return Usagef("usage: /model limit [MODEL] {N|auto}")
 	}
 	activeModelName := func() (string, error) {
-		ac, ok := a.Client.(*AnyLLMClient)
+		ac, ok := a.Client.(*OllamaChatClient)
 		if !ok {
 			return "", Negativef("no active Ollama model")
 		}
@@ -1269,40 +1137,6 @@ func cmdHint(a *Agent, _ []string, out io.Writer) error {
 				hints++
 			}
 		}
-	}
-
-	// --- RAG store ---
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		if a.Rag != nil {
-			if n, err := a.Rag.Count(); err == nil {
-				if n == 0 {
-					fmt.Fprintf(out, "  RAG store %q is empty.\n", entry.Name)
-					fmt.Fprintln(out, "    Ingest reference documents to give Harvey topic-specific knowledge.")
-					fmt.Fprintln(out, "    Run: /rag ingest <file>   (PDF, .md, .txt, .go, .ts, ...)")
-					fmt.Fprintln(out, "    See: /help rag")
-					fmt.Fprintln(out)
-					hints++
-				} else if !a.RagOn {
-					fmt.Fprintf(out, "  RAG is off but store %q has %d chunk(s).\n", entry.Name, n)
-					fmt.Fprintln(out, "    Enabling RAG prepends relevant chunks to each prompt.")
-					fmt.Fprintln(out, "    Run: /rag on")
-					fmt.Fprintln(out)
-					hints++
-				}
-			}
-		} else {
-			fmt.Fprintf(out, "  RAG store %q is configured but not open.\n", entry.Name)
-			fmt.Fprintln(out, "    Run: /rag status")
-			fmt.Fprintln(out)
-			hints++
-		}
-	} else {
-		fmt.Fprintln(out, "  No RAG store configured.")
-		fmt.Fprintln(out, "    Create one to give Harvey access to reference documents.")
-		fmt.Fprintln(out, "    Run: /rag new NAME   then   /rag ingest <file>")
-		fmt.Fprintln(out, "    See: /help learn")
-		fmt.Fprintln(out)
-		hints++
 	}
 
 	// --- Knowledge base ---
@@ -1463,7 +1297,7 @@ func safeModeReset(a *Agent, out io.Writer) error {
 }
 
 func cmdInspect(a *Agent, args []string, out io.Writer) error {
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok || ac.ProviderName() != "ollama" {
 		return Unavailablef("/inspect requires an Ollama backend. Use /model use to pick an Ollama model")
 	}
@@ -1560,15 +1394,13 @@ func truncate(s string, n int) string {
 
 // pruneStaleModelRefs removes model_aliases that point to models no longer
 // available on their respective backend. Each live-model slice covers one
-// engine (ollama, llamafile, llamacpp); pass nil to skip that engine.
+// engine (ollama, hailo); pass nil to skip that engine.
 // Aliases with Engine=="" are preserved — their backend is unknown.
 // Returns the count of removed aliases; saves config when changed.
-func pruneStaleModelRefs(a *Agent, liveOllama, liveLlamafile, liveLlamaCpp, liveHailo []string, out io.Writer) (int, error) {
+func pruneStaleModelRefs(a *Agent, liveOllama, liveHailo []string, out io.Writer) (int, error) {
 	byEngine := map[string]map[string]bool{
-		"ollama":    setOf(liveOllama),
-		"llamafile": setOf(liveLlamafile),
-		"llamacpp":  setOf(liveLlamaCpp),
-		"hailo":     setOf(liveHailo),
+		"ollama": setOf(liveOllama),
+		"hailo":  setOf(liveHailo),
 	}
 
 	removed := 0
@@ -1627,7 +1459,7 @@ func ollamaModelTable(a *Agent, summaries []OllamaModelSummary, out io.Writer, n
 
 	activeName := ""
 	if !numbered {
-		if ac, ok := a.Client.(*AnyLLMClient); ok {
+		if ac, ok := a.Client.(*OllamaChatClient); ok {
 			activeName = ac.ModelName()
 		}
 	}
@@ -1693,13 +1525,14 @@ func ollamaTruncateName(s string, max int) string {
 
 // ─── /rename ─────────────────────────────────────────────────────────────────
 
-/** cmdRename renames the active session recording file without ending the
- * session. The new name is placed in the same directory as the current file.
- * A .spmd extension is added automatically when omitted.
+/** cmdRename renames the active session without ending it: the Fountain file,
+ * the session log beside it, and the log's blobs directory move together. The
+ * new name is placed in the same directory; a .spmd extension is stripped if
+ * given.
  *
  * Parameters:
  *   a    (*Agent)    — Harvey agent with an active Recorder.
- *   args ([]string)  — [0] new filename (path components are stripped).
+ *   args ([]string)  — [0] new name (path components are stripped).
  *   out  (io.Writer) — destination for command output.
  *
  * Returns:
@@ -1710,17 +1543,25 @@ func ollamaTruncateName(s string, max int) string {
  */
 func cmdRename(a *Agent, args []string, out io.Writer) error {
 	if a.Recorder == nil {
-		return Negativef("no active recording. Start one with /record start")
+		return Negativef("no active session file to rename")
 	}
 	if len(args) == 0 {
 		return Usagef("usage: /rename NAME")
 	}
 	name := filepath.Base(args[0])
-	if !strings.HasSuffix(name, ".spmd") && !strings.HasSuffix(name, ".fountain") {
-		name += ".spmd"
+	stem := strings.TrimSuffix(strings.TrimSuffix(name, ".spmd"), ".fountain")
+	newPath := filepath.Join(filepath.Dir(a.Recorder.Path()), stem+".spmd")
+	// The log moves first: it is the record, and it refuses a name already taken.
+	if a.SessionLog != nil {
+		if err := a.SessionLog.Rename(stem); err != nil {
+			return fmt.Errorf("rename: %w", err)
+		}
 	}
-	newPath := filepath.Join(filepath.Dir(a.Recorder.Path()), name)
 	if err := a.Recorder.Rename(newPath); err != nil {
+		if a.SessionLog != nil {
+			old := strings.TrimSuffix(filepath.Base(a.Recorder.Path()), ".spmd")
+			_ = a.SessionLog.Rename(old)
+		}
 		return defaultClass(ClassIO, fmt.Errorf("rename: %w", err))
 	}
 	fmt.Fprintf(out, "Session renamed to: %s\n", newPath)
@@ -1802,87 +1643,6 @@ func ollamaFormatCtx(tokens int) string {
 		return fmt.Sprintf("%dk", tokens/1024)
 	}
 	return fmt.Sprintf("%d", tokens)
-}
-
-// ─── /record ─────────────────────────────────────────────────────────────────
-
-/** cmdRecord manages session recording to Fountain screenplay files. Harvey
- * records all conversations to .spmd files for auditability and resumption.
- *
- * Subcommands:
- *   start [FILE]  — Begin recording to specified file (or auto-generated path)
- *   stop         — Stop current recording session
- *   status       — Show current recording status and file path
- *
- * Recording is enabled by default on startup. Sessions are saved to
- * agents/sessions/ by default, with filenames like:
- *   harvey-session-YYYYMMDD-HHMMSS.spmd
- *
- * The Fountain format (.spmd) captures all chat turns, file operations,
- * shell commands, and skill executions with proper character attribution
- * (HARVEY, USER, MODEL_NAME, etc.).
- *
- * Parameters:
- *   a    (*Agent)    — Harvey agent with recording state.
- *   args ([]string)  — Command arguments from user input.
- *   out  (io.Writer) — Destination for command output.
- *
- * Returns:
- *   error — On command execution failure.
- */
-func cmdRecord(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return Usagef("usage: /record <start [FILE]|stop|status>")
-	}
-	switch strings.ToLower(args[0]) {
-	case "start":
-		if a.Recorder != nil {
-			return Negativef("already recording to %s. Use /record stop first", a.Recorder.Path())
-		}
-		path := ""
-		if len(args) >= 2 {
-			path = args[1]
-		} else {
-			sessDir := a.SessionsDir
-			if sessDir == "" {
-				sessDir = "."
-			}
-			path = DefaultSessionPath(sessDir)
-		}
-		model := "none"
-		if a.Client != nil {
-			model = a.Client.Name()
-		}
-		ws := "."
-		if a.Workspace != nil {
-			ws = a.Workspace.Root
-		}
-		r, err := NewRecorder(path, model, ws)
-		if err != nil {
-			return AsCreate(err)
-		}
-		a.Recorder = r
-		fmt.Fprintf(out, "Recording started: %s\n", path)
-	case "stop":
-		if a.Recorder == nil {
-			return Negativef("not currently recording")
-		}
-		path := a.Recorder.Path()
-		if err := a.Recorder.Close(); err != nil {
-			return err
-		}
-		a.Recorder = nil
-		fmt.Fprintf(out, "Recording stopped. Session saved to %s\n", path)
-	case "status":
-		if a.Recorder != nil {
-			fmt.Fprintf(out, "Recording to: %s\n", a.Recorder.Path())
-		} else {
-			fmt.Fprintln(out, "Not recording.")
-		}
-	default:
-		return Usagef("unknown record subcommand: %s  (usage: /record <start [FILE]|stop|status>)", args[0])
-	}
-	return nil
 }
 
 // ─── /files ──────────────────────────────────────────────────────────────────
@@ -2027,7 +1787,7 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 	if ok == 0 {
 		return failed
 	}
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "read", sb.String())
 	fmt.Fprintf(out, "  %d file(s) added to context.\n", ok)
 	return failed
 }
@@ -2169,7 +1929,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 
 	client := a.Client
 	model := a.Client.Name()
-	if ac, ok := a.Client.(*AnyLLMClient); ok {
+	if ac, ok := a.Client.(*OllamaChatClient); ok {
 		model = ac.ModelName()
 	}
 	if mentionName, rest, ok := ParseAtMention(instruction); ok {
@@ -2201,7 +1961,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 		Config:      cfg,
 	}
 
-	synthesis, err := RunChunkedAnalysis(context.Background(), client, a.Recorder, params, out)
+	synthesis, err := RunChunkedAnalysis(context.Background(), client, params, out)
 	if err != nil {
 		return fmt.Errorf("read-chunks: %w", err)
 	}
@@ -2363,7 +2123,7 @@ func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 		return Negativef("read-dir: no readable files found in %s", dirArg)
 	}
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "read-dir", sb.String())
 	if stopped {
 		fmt.Fprintf(out, "  %d file(s) added (%d bytes). Reached %d KB cap — narrow scope with a subdirectory path or --depth.\n",
 			ok, totalBytes, defaultMaxReadDirBytes/1024)
@@ -2489,7 +2249,7 @@ func cmdReadPDF(a *Agent, args []string, out io.Writer) error {
 	fmt.Fprintln(&sb)
 	sb.WriteString(result.Text)
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "read-pdf", sb.String())
 
 	// Count non-empty injected pages for the confirmation message.
 	injected := 0
@@ -2651,20 +2411,20 @@ func attachImage(a *Agent, filePath, base string, data []byte, mime string, out 
 
 	if attachClientSupportsVision(a) {
 		encoded := base64.StdEncoding.EncodeToString(data)
-		parts := []anyllm.ContentPart{
+		parts := []ContentPart{
 			{Type: "text", Text: fmt.Sprintf("[attached: %s]", base)},
-			{Type: "image_url", ImageURL: &anyllm.ImageURL{
+			{Type: "image_url", ImageURL: &ImageURL{
 				URL: "data:" + mime + ";base64," + encoded,
 			}},
 		}
-		a.AddMessageParts("user", parts)
+		a.addPromptParts("user", "attach", parts)
 		fmt.Fprintf(out, "  ✓ %s attached natively (%s, %s)\n",
 			base, mime, formatBytes(int64(len(data))))
 	} else {
 		text := fmt.Sprintf(
 			"[attached: %s — %s, %s — vision not available on current route; switch to a vision-capable route to process this image natively]",
 			base, mime, formatBytes(int64(len(data))))
-		a.AddMessage("user", text)
+		a.addPrompt("user", "attach", text)
 		fmt.Fprintf(out, "  ✓ %s attached as text description (route has no vision capability)\n", base)
 		fmt.Fprintln(out, "     Tip: use @name to route the next turn to a vision-capable endpoint.")
 	}
@@ -2692,7 +2452,7 @@ func attachText(a *Agent, filePath, base string, data []byte, mime string, out i
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "[attached: %s]\n\n", base)
 	sb.Write(data)
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "attach", sb.String())
 	fmt.Fprintf(out, "  ✓ %s attached as text (%s)\n", base, formatBytes(int64(len(data))))
 	return nil
 }
@@ -2725,7 +2485,7 @@ func attachIsImageMIME(mime string) bool {
 // attachClientSupportsVision reports whether the current LLM client declares
 // image completion capability.
 func attachClientSupportsVision(a *Agent) bool {
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok {
 		return false
 	}
@@ -2920,7 +2680,7 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 	}
 	sb.WriteString("\n```\n")
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "run", sb.String())
 	fmt.Fprintf(out, "  %d bytes of output added to context%s.\n", len(output), exitNote)
 	return nil
 }
@@ -3014,7 +2774,7 @@ func cmdSearch(a *Agent, args []string, out io.Writer) error {
 		sb.WriteString(fmt.Sprintf("... (results truncated at %d matches)\n", maxSearchMatches))
 	}
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "search", sb.String())
 	fmt.Fprintf(out, "  %d match(es) for %q added to context", len(matches), args[0])
 	if truncated {
 		fmt.Fprint(out, " (truncated)")
@@ -3103,7 +2863,7 @@ func cmdGit(a *Agent, args []string, out io.Writer) error {
 	}
 	sb.WriteString("\n```\n")
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "git", sb.String())
 	fmt.Fprintf(out, "  %d bytes of output added to context.\n", len(output))
 	return gitFailed
 }
@@ -3225,67 +2985,12 @@ func cmdSummarize(a *Agent, args []string, out io.Writer) error {
 
 	// Replace history: system prompt + pinned context + summary.
 	a.ClearHistory()
-	a.AddMessage("user", "[Conversation summary]\n\n"+summary)
+	a.addPrompt("user", "summary", "[Conversation summary]\n\n"+summary)
 	fmt.Fprintf(out, "  History condensed to %d chars.\n", len(summary))
 	return nil
 }
 
 // ─── /context ────────────────────────────────────────────────────────────────
-
-// cmdContext manages the agent's PinnedContext: text that persists across
-// /clear and is re-injected into history after the system prompt.
-func cmdContext(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 || strings.ToLower(args[0]) == "show" {
-		if a.PinnedContext == "" {
-			fmt.Fprintln(out, "  (pinned context is empty)")
-		} else {
-			fmt.Fprintf(out, "  Pinned context (%d chars):\n\n%s\n", len(a.PinnedContext), a.PinnedContext)
-		}
-		return nil
-	}
-
-	switch strings.ToLower(args[0]) {
-	case "clear":
-		a.PinnedContext = ""
-		// Remove any existing pinned context message from history.
-		filtered := a.History[:0]
-		for _, m := range a.History {
-			if !(m.Role == "user" && strings.HasPrefix(m.Content, "[pinned context]")) {
-				filtered = append(filtered, m)
-			}
-		}
-		a.History = filtered
-		fmt.Fprintln(out, "  Pinned context cleared.")
-
-	case "add":
-		if len(args) < 2 {
-			return Usagef("usage: /context add TEXT...")
-		}
-		text := strings.Join(args[1:], " ")
-		if a.PinnedContext == "" {
-			a.PinnedContext = text
-		} else {
-			a.PinnedContext += "\n" + text
-		}
-		// Update or insert the pinned context message in history.
-		updated := false
-		for i, m := range a.History {
-			if m.Role == "user" && strings.HasPrefix(m.Content, "[pinned context]") {
-				a.History[i].Content = "[pinned context]\n\n" + a.PinnedContext
-				updated = true
-				break
-			}
-		}
-		if !updated {
-			a.AddMessage("user", "[pinned context]\n\n"+a.PinnedContext)
-		}
-		fmt.Fprintf(out, "  Pinned context updated (%d chars).\n", len(a.PinnedContext))
-
-	default:
-		return Usagef("unknown context subcommand: %s  (usage: /context <show|add TEXT...|clear>)", args[0])
-	}
-	return nil
-}
 
 // ─── /session ────────────────────────────────────────────────────────────────
 
@@ -3364,7 +3069,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		if sessDir == "" {
 			return NoInputf("no sessions directory configured")
 		}
-		files, err := ListSessionFiles(sessDir)
+		files, err := ListSessions(sessDir)
 		if err != nil {
 			return err
 		}
@@ -3385,17 +3090,14 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		} else {
 			return Usagef("usage: /session show FILE")
 		}
-		info, err := os.Stat(path)
+		si, err := LoadSessionInfo(path)
 		if err != nil {
 			return err
 		}
-		_, model, turns, err := parseFountainSession(path)
-		if err != nil {
-			return defaultClass(ClassData, fmt.Errorf("could not parse session: %w", err))
-		}
-		fmt.Fprintf(out, "  File:    %s\n", path)
-		fmt.Fprintf(out, "  Date:    %s\n", info.ModTime().Format("2006-01-02 15:04"))
-		fmt.Fprintf(out, "  Model:   %s\n", model)
+		turns := si.Turns
+		fmt.Fprintf(out, "  File:    %s\n", si.Path)
+		fmt.Fprintf(out, "  Date:    %s\n", si.Date.Format("2006-01-02 15:04"))
+		fmt.Fprintf(out, "  Model:   %s\n", si.Model)
 		fmt.Fprintf(out, "  Turns:   %d\n", len(turns))
 		if len(turns) > 0 {
 			preview := turns[0].UserInput
@@ -3409,7 +3111,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 			if a.SessionsDir == "" {
 				return NoInputf("no sessions directory configured")
 			}
-			files, err := ListSessionFiles(a.SessionsDir)
+			files, err := ListSessions(a.SessionsDir)
 			if err != nil {
 				return err
 			}
@@ -3429,7 +3131,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 			}
 			args = append(args, chosen)
 		}
-		n, err := a.ContinueFromFountain(args[1])
+		n, err := a.ContinueFromSession(args[1])
 		if err != nil {
 			return defaultClass(ClassData, fmt.Errorf("%s: %w", args[1], err))
 		}
@@ -3448,7 +3150,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		if a.Client == nil {
 			return errNoBackend()
 		}
-		return a.ReplayFromFountain(context.Background(), src, outPath, out)
+		return a.ReplayFromSession(context.Background(), src, outPath, out)
 	default:
 		return Usagef("unknown session subcommand: %s  (usage: /session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>)", args[0])
 	}
@@ -3716,16 +3418,13 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 
 	blocks := findTaggedBlocks(reply)
 
-	// Open an agent scene in the recording if there is anything to act on.
-	if len(blocks) > 0 && a.Recorder != nil {
-		desc := fmt.Sprintf("Harvey proposes to write %d file(s).", len(blocks))
-		_ = a.Recorder.StartAgentScene(desc)
-	}
-
 	applyAll := false
+	a.offerOf = len(blocks)
+	defer func() { a.permScope, a.offerIndex, a.offerOf = "", 0, 0 }()
 
 	// 1. Tagged code blocks — always offer to apply.
-	for _, b := range blocks {
+	for i, b := range blocks {
+		a.offerIndex = i + 1
 		// A path the permissions table forbids is refused before it is offered,
 		// so a yes is never asked for a write that cannot happen.
 		if !a.CheckWritePermission(b.path) {
@@ -3767,6 +3466,7 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 			return
 		case actionAll:
 			applyAll = true
+			a.permScope = "session" // the author's answer covers the writes that follow
 		}
 		if err := a.Workspace.WriteFile(b.path, []byte(b.content), 0o644); err != nil {
 			fmt.Fprintf(out, "  ✗ %s: %v\n", b.path, err)
@@ -3790,12 +3490,15 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 				choice, ended, answer := promptActionLine(reader, out, "Write: "+suggested, content)
 				if ended {
 					fmt.Fprintln(out, "\n  input ended; nothing written.")
+					a.logAuthorsChoice("write", suggested, actionQuit)
 				} else if choice == actionUnknown {
 					if !a.queueIfCommand(answer, out) {
 						fmt.Fprintf(out, "  did not understand %q; nothing written.\n", answer)
 					}
 				} else if choice != actionNo && choice != actionQuit {
 					dest = suggested
+				} else {
+					a.logAuthorsChoice("write", suggested, choice)
 				}
 			} else {
 				// No path known — ask the user to supply one.
@@ -3847,11 +3550,12 @@ func choiceStr(c actionChoice) string {
 	}
 }
 
-// logAction records one agent action to the Recorder if one is active.
+// logAction records one agent action in the session log. A refusal by the
+// permissions table ("denied") is recorded once, as a rule decision, by
+// logAuthorsAnswer; the audit buffer's own event for it is held back while an
+// offer is running.
 func (a *Agent) logAction(kind, target string, choice actionChoice, outcome string) {
-	if a.Recorder != nil {
-		_ = a.Recorder.RecordAgentAction(kind, target, choiceStr(choice), outcome)
-	}
+	a.logAuthorsAnswer(kind, target, choice, outcome)
 }
 
 // ─── /format ─────────────────────────────────────────────────────────────────
@@ -3977,20 +3681,6 @@ func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
 		}
 		fmt.Fprintf(out, "  Root:    %s\n", a.Workspace.Root)
 		fmt.Fprintf(out, "  Aliases: %d defined\n", len(a.Config.ModelAliases))
-		// Profile + injection status
-		if a.Config.Memory.Enabled && a.Memory != nil && a.Memory.Store != nil {
-			profiles, err := a.Memory.Store.List(string(MemoryTypeWorkspaceProfile))
-			if err == nil && len(profiles) > 0 {
-				p := profiles[0]
-				inject := "injection off — enable with: memory.inject_on_start: true in harvey.yaml"
-				if a.Config.Memory.InjectOnStart {
-					inject = "injection on"
-				}
-				fmt.Fprintf(out, "  Profile: %q (%s)\n", p.Description, inject)
-			} else {
-				fmt.Fprintln(out, "  Profile: none  (create one with /memory profile new)")
-			}
-		}
 		return nil
 	default:
 		return Usagef("unknown subcommand %q. Usage: /workspace <init [FROM_PATH]|status>", sub)

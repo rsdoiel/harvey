@@ -369,8 +369,6 @@ func isolateModels(t *testing.T, a *Agent) {
 	t.Setenv("HARVEY_LLAMAFILE_DIR", "")
 	a.Config.Ollama.URL = "http://127.0.0.1:1"
 	// DefaultConfig resolved ~/Models before HOME was redirected.
-	a.Config.Llamafile.ModelsDir = t.TempDir()
-	a.Config.LlamaCpp.ModelsDir = t.TempDir()
 }
 
 func withModelCache(t *testing.T, a *Agent) {
@@ -437,10 +435,7 @@ func TestHandlerErrors_SafeMode(t *testing.T) {
 	})
 }
 
-func TestHandlerErrors_RecordAndRename(t *testing.T) {
-	rec := func(args ...string) func(*Agent, io.Writer) error {
-		return func(a *Agent, o io.Writer) error { return cmdRecord(a, args, o) }
-	}
+func TestHandlerErrors_Rename(t *testing.T) {
 	recording := func(t *testing.T, a *Agent) {
 		r, err := NewRecorder(filepath.Join(a.Workspace.Root, "s.spmd"), "m", a.Workspace.Root)
 		if err != nil {
@@ -450,12 +445,6 @@ func TestHandlerErrors_RecordAndRename(t *testing.T) {
 		a.Recorder = r
 	}
 	runHandlerCases(t, []handlerCase{
-		{"record: no arguments", nil, rec(), ClassUsage},
-		{"record: unknown subcommand", nil, rec("bogus"), ClassUsage},
-		{"record stop: not recording", nil, rec("stop"), ClassNegative},
-		{"record start: already recording", recording, rec("start"), ClassNegative},
-		{"record start: cannot create the file", nil, rec("start", "/nonexistent-dir/x/s.spmd"), ClassCantCreate},
-		{"record status", nil, rec("status"), ClassOK},
 		{"rename: not recording", nil, func(a *Agent, o io.Writer) error { return cmdRename(a, []string{"n"}, o) }, ClassNegative},
 		{"rename: no name", recording, func(a *Agent, o io.Writer) error { return cmdRename(a, nil, o) }, ClassUsage},
 	})
@@ -466,10 +455,29 @@ func TestHandlerErrors_Context(t *testing.T) {
 		return func(a *Agent, o io.Writer) error { return cmdContext(a, args, o) }
 	}
 	runHandlerCases(t, []handlerCase{
-		{"add without text", nil, cx("add"), ClassUsage},
+		{"removed subcommand add", nil, cx("add", "note"), ClassUsage},
+		{"removed subcommand clear", nil, cx("clear"), ClassUsage},
 		{"unknown subcommand", nil, cx("bogus"), ClassUsage},
-		{"show", nil, cx("show"), ClassOK},
-		{"add", nil, cx("add", "note"), ClassOK},
+		{"view", nil, cx(), ClassOK},
+	})
+}
+
+func TestHandlerErrors_Pins(t *testing.T) {
+	pin := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdPin(a, args, o) }
+	}
+	unpin := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdUnpin(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"pin: no arguments", nil, pin(), ClassUsage},
+		{"pin: --text without text", nil, pin("--text"), ClassUsage},
+		{"pin: not an id", nil, pin("somewhere"), ClassUsage},
+		{"pin: an event with no log", nil, pin("s#0001"), ClassNegative},
+		{"pin: text", nil, pin("--text", "note"), ClassOK},
+		{"unpin: no arguments", nil, unpin(), ClassUsage},
+		{"unpin: no such pin", nil, unpin("3"), ClassUsage},
+		{"pins", nil, func(a *Agent, o io.Writer) error { return cmdPins(a, nil, o) }, ClassOK},
 	})
 }
 
@@ -524,7 +532,6 @@ func TestRun_NonInteractive_FailedModelSwitchDecidesExitClass(t *testing.T) {
 	a.Config.ModelAliases = map[string]ModelAlias{
 		"broken": {Model: "no-such-file.gguf", Engine: "llamacpp"},
 	}
-	a.Config.LlamaCpp.ModelsDir = t.TempDir()
 	err := a.Run(io.Discard)
 	got := ExitCodeFor(err)
 	if got == ClassOK || got == ClassInternal {
@@ -570,7 +577,7 @@ func withKB(t *testing.T, a *Agent) {
 
 func withRoutes(t *testing.T, a *Agent) {
 	a.Routes = NewRouteRegistry()
-	a.Routes.Add(&RouteEndpoint{Name: "claude", URL: "anthropic://", Model: "m", Kind: KindAnthropic})
+	a.Routes.Add(&RouteEndpoint{Name: "pi2", URL: "ollama://192.168.1.12:11434", Model: "m", Kind: KindOllama})
 }
 
 func TestHandlerErrors_Memory(t *testing.T) {
@@ -588,11 +595,6 @@ func TestHandlerErrors_Memory(t *testing.T) {
 		{"flag: nothing to pick from", withMemory, mem("flag"), ClassNegative},
 		{"recall: no query", withMemory, mem("recall"), ClassUsage},
 		{"recall: nothing found", withMemory, mem("recall", "zzzqqq"), ClassNegative},
-		{"profile: unknown subcommand", withMemory, mem("profile", "bogus"), ClassUsage},
-		{"profile show: no profile", withMemory, mem("profile", "show"), ClassNegative},
-		{"profile rename: no name", withMemory, mem("profile", "rename"), ClassUsage},
-		{"profile rename: no profile", withMemory, mem("profile", "rename", "x"), ClassNegative},
-		{"profile edit: no profile", withMemory, mem("profile", "edit"), ClassNegative},
 	})
 }
 
@@ -601,32 +603,8 @@ func TestHandlerErrors_KB(t *testing.T) {
 		return func(a *Agent, o io.Writer) error { return cmdKB(a, args, o) }
 	}
 	runHandlerCases(t, []handlerCase{
-		{"no arguments shows the status", withKB, kb(), ClassOK},
-		{"search: no terms", withKB, kb("search"), ClassUsage},
+		{"no arguments", withKB, kb(), ClassUsage},
 		{"inject: no such project", withKB, kb("inject", "ghost"), ClassNegative},
-		{"project: no arguments", withKB, kb("project"), ClassUsage},
-		{"project add: no name", withKB, kb("project", "add"), ClassUsage},
-		{"project use: no id", withKB, kb("project", "use"), ClassUsage},
-		{"project use: bad id", withKB, kb("project", "use", "x"), ClassUsage},
-		{"project: unknown subcommand", withKB, kb("project", "bogus"), ClassUsage},
-		{"observe: no text", withKB, kb("observe"), ClassUsage},
-		{"concept: no arguments", withKB, kb("concept"), ClassUsage},
-		{"concept add: no name", withKB, kb("concept", "add"), ClassUsage},
-		{"concept: unknown subcommand", withKB, kb("concept", "bogus"), ClassUsage},
-		{"source: no arguments", withKB, kb("source"), ClassUsage},
-		{"source add: no title", withKB, kb("source", "add"), ClassUsage},
-		{"source show: no id", withKB, kb("source", "show"), ClassUsage},
-		{"source show: bad id", withKB, kb("source", "show", "x"), ClassUsage},
-		{"source show: no such source", withKB, kb("source", "show", "999"), ClassNegative},
-		{"source remove: no id", withKB, kb("source", "remove"), ClassUsage},
-		{"source remove: bad id", withKB, kb("source", "remove", "x"), ClassUsage},
-		{"source: unknown subcommand", withKB, kb("source", "bogus"), ClassUsage},
-		{"retract: no id", withKB, kb("retract"), ClassUsage},
-		{"retract: bad id", withKB, kb("retract", "x"), ClassUsage},
-		{"cite: no ids", withKB, kb("cite"), ClassUsage},
-		{"show: no id", withKB, kb("show"), ClassUsage},
-		{"show: bad id", withKB, kb("show", "x"), ClassUsage},
-		{"show: no such observation", withKB, kb("show", "999"), ClassNegative},
 	})
 }
 
@@ -637,10 +615,10 @@ func TestHandlerErrors_Route(t *testing.T) {
 	runHandlerCases(t, []handlerCase{
 		{"rm: no such route", withRoutes, rt("rm", "ghost"), ClassNegative},
 		{"probe: no such route", withRoutes, rt("probe", "ghost"), ClassNegative},
-		{"set: missing arguments", withRoutes, rt("set", "claude"), ClassUsage},
+		{"set: missing arguments", withRoutes, rt("set", "pi2"), ClassUsage},
 		{"set: no such route", withRoutes, rt("set", "ghost", "tools", "on"), ClassNegative},
-		{"set: bad value", withRoutes, rt("set", "claude", "tools", "maybe"), ClassUsage},
-		{"set: unknown setting", withRoutes, rt("set", "claude", "bogus", "on"), ClassUsage},
+		{"set: bad value", withRoutes, rt("set", "pi2", "tools", "maybe"), ClassUsage},
+		{"set: unknown setting", withRoutes, rt("set", "pi2", "bogus", "on"), ClassUsage},
 		{"unknown subcommand", withRoutes, rt("bogus"), ClassUsage},
 	})
 }
@@ -664,26 +642,6 @@ func TestHandlerErrors_Skill(t *testing.T) {
 		{"set new: no name", nil, ss("new"), ClassUsage},
 		{"set: unknown subcommand", nil, ss("bogus"), ClassUsage},
 		{"set unload: nothing active", nil, ss("unload"), ClassNegative},
-	})
-}
-
-func TestHandlerErrors_Rag(t *testing.T) {
-	rg := func(args ...string) func(*Agent, io.Writer) error {
-		return func(a *Agent, o io.Writer) error { return cmdRag(a, args, o) }
-	}
-	runHandlerCases(t, []handlerCase{
-		{"on: not configured", nil, rg("on"), ClassNegative},
-		{"new: no name", nil, rg("new"), ClassUsage},
-		{"ingest: no path", nil, rg("ingest"), ClassUsage},
-		{"query: no text", nil, rg("query"), ClassUsage},
-		{"unknown subcommand", nil, rg("bogus"), ClassUsage},
-		{"show: no store configured", nil, rg("show"), ClassNegative},
-		{"show: no such store", nil, rg("show", "ghost"), ClassNegative},
-		{"use: no such store", nil, rg("use", "ghost"), ClassNegative},
-		{"drop: no such store", nil, rg("drop", "ghost"), ClassNegative},
-		{"use: nothing to pick from", nil, rg("use"), ClassNegative},
-		{"new: encoderfile needs a url", nil, rg("new", "s", "--embedder", "encoderfile"), ClassUsage},
-		{"status: nothing configured is a status", nil, rg("status"), ClassOK},
 	})
 }
 

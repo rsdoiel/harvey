@@ -1,117 +1,71 @@
-%harvey(7) user manual | version 0.0.16 66875a0
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-09-24
+% 2026-10-20
 
 # NAME
 
-KB — knowledge base management
+KB — the knowledge base, through the installed kb
 
 # SYNOPSIS
 
-/kb [status]
-/kb search TERM [TERM...]
+/kb [OPTIONS] VERB [ARGS...]
 /kb inject [PROJECT]
-/kb project <list|add NAME [DESC]|use ID>
-/kb observe [KIND] TEXT
-/kb concept <list|add NAME [DESC]>
+/kb project use ID
 /kb learn [ingest|draft|review|concepts] [ARGS]
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
 
 # DESCRIPTION
 
-Harvey keeps a SQLite knowledge base at <workdir>/agents/knowledge.db.
-It stores structured notes about experiments and concepts so you can
-search and inject that context into conversations without relying on
-the model's general knowledge.
+/kb runs the installed kb(1) on this workspace's knowledge base,
+<workdir>/agents/knowledge.db, and shows its output. The verbs, options and
+exit codes are kb's own, so anything the command line can do, /kb can, and
+"/kb help" shows kb's manual. harvey passes -db for the workspace's database
+unless you give one. kb runs in the workspace with no terminal input, so a
+verb kb keeps for a terminal (accepting a decision record, for example)
+refuses; run those yourself with ! kb ... .
 
-The knowledge base is independent of the RAG store (/help rag). KB holds
-hand-authored structured records; RAG holds embedded chunks from ingested
-documents. Use both: /kb inject to bring structured records into context,
-and RAG to retrieve relevant document passages automatically.
-
-# CONCEPTS
-
-  Project     — a named container for a body of work. One project can be
-                "active" at a time; /kb observe attaches to the active project.
-
-  Observation — a timestamped note attached to a project. Each observation
-                has a kind:
-
-                  note        — general remark
-                  finding     — empirical result
-                  decision    — a choice made and its rationale
-                  question    — open question to return to
-                  hypothesis  — testable prediction
-
-  Concept     — a named idea or term that can be referenced across multiple
-                projects and observations.
-
-# SUBCOMMANDS
-
-/kb status
-  Show the database path, project count, and observation count.
-
-/kb search TERM [TERM...]
-  Full-text search (FTS5) across all observations and concepts. Supports
-  quoted phrases and prefix wildcards:
+kb must be installed:
 
 ~~~
-  /kb search RAG embedding
+  go install github.com/rsdoiel/knowledge/cmd/kb@latest
+~~~
+
+KB holds hand-authored structured records and ingested documents.
+
+Add -json before the verb for machine-readable output. harvey does not add it.
+
+# EXAMPLES
+
+~~~
   /kb search "context window"
-  /kb search grpc*
+  /kb project list
+  /kb observation add --project harvey finding "chunk size 500 removes noise"
+  /kb record show harvey/DR-0048
+  /kb stats
 ~~~
+
+# HARVEY'S OWN VERBS
+
+Three things only harvey can do are not sent to kb.
 
 /kb inject [PROJECT]
   Format the knowledge base as Markdown and add it to the conversation
-  as a user message. With no argument, injects the active project (or all
-  projects if none is active). With a project name, injects only that project.
-
-~~~
-  /kb inject
-  /kb inject harvey
-~~~
-
-/kb project list
-  List all projects with ID, name, and status. The active project is
-  marked with *.
-
-/kb project add NAME [DESCRIPTION]
-  Create a project and set it as the active project.
-
-~~~
-  /kb project add harvey "terminal coding agent for Ollama"
-~~~
+  as a user message. With no argument, injects the current project (or all
+  projects if none is current). With a project name, injects only that project.
 
 /kb project use ID
-  Set an existing project as the active project by numeric ID.
+  Set the current project by numeric ID. inject, learn and memory recall use
+  it. (/kb project list shows the IDs.)
 
-/kb observe [KIND] TEXT
-  Record an observation against the active project. KIND defaults to
-  "note" if omitted. Valid kinds: note, finding, decision, question,
-  hypothesis.
-
-~~~
-  /kb observe finding RAG threshold of 0.3 eliminates noise on granite3-moe
-  /kb observe decision switched embedding model to nomic-embed-text
-  /kb observe question does bge-m3 outperform nomic on code retrieval?
-~~~
-
-/kb concept list
-  List all concepts with ID and description.
-
-/kb concept add NAME [DESCRIPTION]
-  Add a named concept to the knowledge base.
-
-~~~
-  /kb concept add RAG "retrieval-augmented generation"
-  /kb concept add "context window" "token budget for a single LLM call"
-~~~
+/kb learn
+  See LEARNING MODE.
 
 # LEARNING MODE
 
 /kb learn turns Harvey's own recorded sessions and hand-off notes into
 searchable knowledge. Every step ends with a human decision: nothing a model
 writes is trusted, or found by /kb search, until you accept it. All four
-steps work on the active project (/kb project use ID).
+steps work on the current project (/kb project use ID).
 
 /kb learn ingest [--min-words N] [--all] [--dry-run]
   List the hand-off notes and recorded sessions that are not yet in the
@@ -161,6 +115,61 @@ steps work on the active project (/kb project use ID).
   Tagging changes source text, so summaries of changed sections are marked
   stale; the closing line says how many.
 
+# DRAFTING OBSERVATIONS
+
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
+  Read a recorded session and ask a model what in it is worth remembering,
+  then write each answer to the knowledge base as a draft observation. A draft
+  is not searchable, not recalled into a prompt and not counted until you
+  promote it; harvey never promotes one. Nothing runs on its own: you type
+  this when you want it.
+
+  SESSION is a session name (harvey-session-20261030-143612) or the path of a
+  .jsonl log; with none it reads the session you are in. It reads what you
+  and the model said, and each tool call with its status and the start of its
+  output, in passes that fit the drafting model's context window. Skill and
+  knowledge-base text added to prompts is not read, and neither is anything
+  the log recorded at debug level.
+
+  The model is @route if given, else the active model (learn_model is for
+  /kb learn only). Each draft is signed "harvey MODEL", so the review queue
+  shows which model wrote it, and ends with a line "Drafted from SESSION#a..#b."
+  naming the events it came from.
+
+  The project is --project, else kb: {project: NAME} in agents/harvey.yaml,
+  else the workspace directory's name when a kb project has it; otherwise
+  /kb draft stops and lists the projects.
+
+  At most 5 drafts are written (--limit N changes that; --limit 0 writes all).
+  A proposal that repeats an observation already in the project, in any
+  status, or an earlier proposal of the run, is skipped and the report says
+  what it matched. A pass whose model call fails is reported and does not stop
+  the others; the exit code is that of the first failure. Ctrl-C once stops
+  after the pass in flight (its answer is kept, with what was already
+  written); Ctrl-C again cancels the request now, for a model that is stuck.
+  Tab after /kb draft offers the recorded sessions.
+
+  Each request asks the model for at most 512 tokens, room for the handful of
+  lines a pass wants. Without a limit a small model on hailo-ollama ran on to
+  the server's own stopping point and repeated its five lines eight times.
+
+  Expect to discard most drafts from a small model. On one real session,
+  qwen2.5:3b, llama3.2:3b and granite4 proposed between 1 and 5 drafts each,
+  and about one in four or five was usable as written; none stated the lesson
+  of the session cleanly. A hailo-ollama model is slow (about 2.6 tokens a
+  second for llama3.2:3b), and its context window is not known to harvey, so a
+  pass is sized for 2,048 tokens. The review step is where a draft becomes
+  knowledge; do not skip it.
+
+  Review the drafts in a normal shell, because promoting needs a terminal:
+
+~~~
+  kb observation review list --project NAME
+  kb observation review promote ID
+~~~
+
+  This needs kb 0.0.30 or newer.
+
 # WORKFLOW EXAMPLE
 
 ~~~
@@ -178,6 +187,6 @@ answer questions about it, suggest next steps, or help resolve open questions.
 # SEE ALSO
 
   /memory recall         — search all knowledge silos including the KB
-  /rag ingest            — embed documents for semantic retrieval
-  /help learn            — overview of all three memory silos
+  /kb document ingest    — make a document searchable (the installed kb)
+  /help learn            — overview of the memory silos
 

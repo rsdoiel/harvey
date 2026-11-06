@@ -7,8 +7,6 @@ import (
 	"io"
 	"strings"
 	"time"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // ErrToolLoopExceeded is returned by RunToolLoop when the LLM exceeds the
@@ -30,7 +28,7 @@ type StatusReporter interface {
 }
 
 /** ToolCapable is satisfied by LLM clients that support schema-based tool
- * calling. AnyLLMClient implements this interface; other backends that do not
+ * calling. OllamaChatClient implements this interface; other backends that do not
  * support tools do not need to implement it.
  *
  * Example:
@@ -39,7 +37,29 @@ type StatusReporter interface {
  *   }
  */
 type ToolCapable interface {
-	ChatWithTools(ctx context.Context, messages []Message, tools []anyllm.Tool, out io.Writer) (ChatStats, []anyllm.ToolCall, error)
+	ChatWithTools(ctx context.Context, messages []Message, tools []Tool, out io.Writer) (ChatStats, []ToolCall, error)
+}
+
+/** ToolEvents receives what happens inside a tool loop so a session log can
+ * record it: each tool call and its result. It is optional; a nil
+ * Events on a ToolExecutor records nothing.
+ *
+ * Methods:
+ *   ToolCall(tc)                                  — a tool is about to run; returns the call's event id.
+ *   ToolResult(call, tc, output, failed, elapsed) — the tool finished.
+ *
+ * The model calls themselves are logged by the client (ModelCallLog), once,
+ * whoever makes them.
+ *
+ * Example:
+ *   ex.Events = agent.toolEvents()
+ */
+type ToolEvents interface {
+	ToolCall(tc ToolCall) string
+	ToolResult(call string, tc ToolCall, output string, failed bool, elapsed time.Duration)
+	// Compacted tells the log that the round made by the tool calls with these
+	// ids was shortened in the history before the next model call (DR-0048).
+	Compacted(callIDs []string)
 }
 
 /** ToolExecutor drives the multi-turn tool call loop between the LLM and the
@@ -62,10 +82,10 @@ type ToolExecutor struct {
 	Client               LLMClient
 	MaxIterations        int
 	MaxOutputBytes       int
-	DebugLog             *DebugLog
 	ToolResultCompaction bool           // when true, compact prior tool rounds before each new LLM turn
 	Status               StatusReporter // optional: receives transient status during tool calls
 	CharacterName        string         // ALL-CAPS model name for session attribution; "" = HARVEY (default)
+	Events               ToolEvents     // optional: receives each model call and tool call for the session log
 }
 
 /** NewToolExecutor creates a ToolExecutor from the agent's tool registry,
@@ -106,7 +126,7 @@ func NewToolExecutor(registry *ToolRegistry, client LLMClient, cfg *Config) *Too
  *
  * Parameters:
  *   ctx       (context.Context)    — controls the request lifetime.
- *   toolCalls ([]anyllm.ToolCall)  — tool calls from the LLM's response.
+ *   toolCalls ([]ToolCall)  — tool calls from the LLM's response.
  *
  * Returns:
  *   []Message — one tool-role message per call.
@@ -115,18 +135,20 @@ func NewToolExecutor(registry *ToolRegistry, client LLMClient, cfg *Config) *Too
  * Example:
  *   results, err := ex.ExecuteToolCalls(ctx, calls)
  */
-func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.ToolCall) ([]Message, error) {
+func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []ToolCall) ([]Message, error) {
 	results := make([]Message, 0, len(toolCalls))
 	for _, tc := range toolCalls {
 		if e.Status != nil {
 			e.Status.ReportSensor(SensorEvent{Kind: "tool_call", Message: fmt.Sprintf("Calling %s…", tc.Function.Name), Class: Computational})
 		}
+		callEvent := ""
+		if e.Events != nil {
+			callEvent = e.Events.ToolCall(tc)
+		}
 		start := time.Now()
 		output, err := e.Registry.Dispatch(ctx, tc.Function.Name, tc.Function.Arguments, e.MaxOutputBytes)
 		elapsed := time.Since(start)
-		errStr := ""
 		if err != nil {
-			errStr = err.Error()
 			output = fmt.Sprintf("error: %v", err)
 			if e.Status != nil {
 				e.Status.ReportSensor(SensorEvent{Kind: "tool_call", Message: fmt.Sprintf("%s failed", tc.Function.Name), Class: Computational})
@@ -134,7 +156,9 @@ func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.
 		} else if e.Status != nil {
 			e.Status.ReportSensor(SensorEvent{Kind: "tool_call", Message: fmt.Sprintf("%s done", tc.Function.Name), Class: Computational})
 		}
-		e.DebugLog.LogToolCall(tc.Function.Name, len(output), elapsed, errStr)
+		if e.Events != nil {
+			e.Events.ToolResult(callEvent, tc, output, err != nil, elapsed)
+		}
 		results = append(results, Message{
 			Role:       "tool",
 			Content:    output,
@@ -175,15 +199,18 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 
 	schemas := e.Registry.GetToolSchemas()
 	history := messages
-	prevRoundStart := -1 // index where the previous round's messages begin; -1 = none yet
+	prevRoundStart := -1  // index where the newest round's messages begin; -1 = none yet
+	staleRoundStart := -1 // index of a round the model has already read, awaiting compaction; -1 = none
 
 	for iter := 0; iter < e.MaxIterations; iter++ {
-		// Compact the previous round's messages now that the LLM has consumed them.
-		// We wait until the next iteration so the current round's full results are
-		// always available when the LLM needs them.
-		if e.ToolResultCompaction && prevRoundStart >= 0 {
-			compactToolRound(history, prevRoundStart)
-		}
+		// Compact a round only once the model has read it. The newest round's
+		// results are what this call is for, so they go in intact; the round
+		// before it was in the previous call and is now stale. (Compacting the
+		// newest round here sent "[done]" in place of every result but
+		// read_file's, so no model read a recall or a command's output: D7,
+		// 2026-11-02.)
+		e.compactRound(history, staleRoundStart)
+		staleRoundStart = -1
 
 		stats, calls, err := tc.ChatWithTools(ctx, history, schemas, out)
 		if err != nil {
@@ -191,11 +218,16 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 		}
 
 		if len(calls) == 0 {
-			// LLM returned a plain text response — we're done.
+			// LLM returned a plain text response — we're done. It has now read the
+			// newest round too, so history leaves the turn compact.
+			e.compactRound(history, prevRoundStart)
 			return history, stats, nil
 		}
 
-		// Record where this round begins so we can compact it next iteration.
+		// Record where this round begins. The round before it has now been read
+		// by the call that just returned, so it is compacted at the next iteration;
+		// this one waits a call longer.
+		staleRoundStart = prevRoundStart
 		prevRoundStart = len(history)
 
 		// Append the assistant's tool-call turn to history.
@@ -213,6 +245,31 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 	}
 
 	return history, ChatStats{}, fmt.Errorf("tool loop exceeded %d iterations without a final response: %w", e.MaxIterations, ErrToolLoopExceeded)
+}
+
+/** compactRound compacts the tool-call round that begins at start in history,
+ * if compaction is on, and tells Events which calls it compacted. A start of -1
+ * or one past the end does nothing.
+ *
+ * Parameters:
+ *   history ([]Message) — the conversation, modified in place.
+ *   start   (int)       — index of the round's assistant message, or -1.
+ *
+ * Example:
+ *   e.compactRound(history, staleRoundStart)
+ */
+func (e *ToolExecutor) compactRound(history []Message, start int) {
+	if !e.ToolResultCompaction || start < 0 || start >= len(history) {
+		return
+	}
+	if e.Events != nil {
+		var ids []string
+		for _, tc := range history[start].ToolCalls {
+			ids = append(ids, tc.ID)
+		}
+		e.Events.Compacted(ids)
+	}
+	compactToolRound(history, start)
 }
 
 // compactToolRound replaces the assistant and tool messages from a completed
@@ -272,7 +329,7 @@ func availableToolNames(a *Agent) []string {
  *
  * Parameters:
  *   a     (*Agent)            — provides the tool registry, client, and config.
- *   calls ([]anyllm.ToolCall) — already-parsed tool calls to execute.
+ *   calls ([]ToolCall) — already-parsed tool calls to execute.
  *   out   (io.Writer)         — destination for the per-call and warning lines.
  *
  * Returns:
@@ -283,11 +340,11 @@ func availableToolNames(a *Agent) []string {
  * Example:
  *   dispatched, unknown := executeAndReportToolCalls(a, calls, out)
  */
-func executeAndReportToolCalls(a *Agent, calls []anyllm.ToolCall, out io.Writer) (dispatched bool, unknownNames []string) {
+func executeAndReportToolCalls(a *Agent, calls []ToolCall, out io.Writer) (dispatched bool, unknownNames []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ex := NewToolExecutor(a.Tools, a.Client, a.Config)
-	ex.DebugLog = a.DebugLog
+	ex.Events = a.toolEvents()
 	results, _ := ex.ExecuteToolCalls(ctx, calls)
 	for i, r := range results {
 		name := ""

@@ -61,7 +61,7 @@ The full conversation history is NOT included. This means:
   - Per-step token usage is constant regardless of plan length.
   - The model has no memory of earlier steps beyond the plan file.
   - For steps that need context from prior steps, inject that context
-    explicitly via /context add before running /plan next, or note it
+    explicitly via /pin --text before running /plan next, or note it
     directly in agents/plan.md.
 
 # WORKFLOW EXAMPLE

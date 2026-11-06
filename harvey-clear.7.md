@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -22,12 +22,11 @@ The model has no memory of the previous conversation after /clear.
 # WHAT SURVIVES /CLEAR
 
   System prompt   — re-injected from HARVEY.md automatically.
-  Pinned context  — any text set with /context add is re-injected as the
+  Pins            — anything kept with /pin is re-injected as the
                     first user message, keeping persistent constraints
                     visible to the model across topic changes.
-  Recording       — an active /record session keeps running; the cleared
-                    conversation is not written to the session file.
-  RAG             — the RAG store and its on/off state are unaffected.
+  Recording       — the session log keeps running; the cleared conversation
+                    stays in it, as the record of what was said.
   Skills          — the skill catalog remains loaded; /skill load must be
                     re-run to activate a skill in the new context.
 
@@ -39,6 +38,6 @@ The model has no memory of the previous conversation after /clear.
 
 # SEE ALSO
 
-  /context   — manage pinned context that survives /clear
+  /pin       — keep something in front of the model (pins survive /clear)
   /summarize — condense history into a summary instead of discarding it
 

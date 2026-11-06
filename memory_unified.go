@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,8 +11,7 @@ import (
 
 // factualTypes are always included at score 1.0 regardless of query.
 var factualTypes = map[MemoryType]bool{
-	MemoryTypeWorkspaceProfile: true,
-	MemoryTypeProjectFact:      true,
+	MemoryTypeProjectFact: true,
 }
 
 /** UnifiedResult is one retrieved item from any memory silo.
@@ -36,6 +36,9 @@ type UnifiedResult struct {
 	Content string
 	Score   float64
 	Tokens  int
+	// Retracted is whether the row rests on a retracted source; nil when the
+	// recall path cannot tell (the substring fallback looks up no provenance).
+	Retracted *bool
 }
 
 /** UnifiedMemory provides budget-aware retrieval across all memory silos:
@@ -108,7 +111,7 @@ func (u *UnifiedMemory) Recall(query string, embedder Embedder, budget int) ([]U
 	}
 
 	// 1. Factual types — always first at score 1.0.
-	for _, ft := range []MemoryType{MemoryTypeWorkspaceProfile, MemoryTypeProjectFact} {
+	for _, ft := range []MemoryType{MemoryTypeProjectFact} {
 		docs, err := u.store.ListDocs(string(ft))
 		if err != nil {
 			continue
@@ -133,19 +136,7 @@ func (u *UnifiedMemory) Recall(query string, embedder Embedder, budget int) ([]U
 		}
 	}
 
-	// 3. RAG chunks.
-	if u.cfg.RagEnabled && query != "" && u.ws != nil {
-		ragResults, err := u.recallRAG(query, embedder)
-		if err == nil {
-			for _, r := range ragResults {
-				if !add(r) {
-					return results, nil
-				}
-			}
-		}
-	}
-
-	// 4. KB observations.
+	// 3. KB observations.
 	if u.cfg.KnowledgeDB != "" && u.cfg.CurrentProjectID > 0 && query != "" && u.ws != nil {
 		kbResults, _ := u.recallKB(query)
 		for _, r := range kbResults {
@@ -236,52 +227,16 @@ func experientialContent(doc MemoryDoc) string {
 	return string(doc.Meta.Type) + ": " + doc.Meta.Description
 }
 
-// recallRAG queries the active RAG store using the provided embedder.
-func (u *UnifiedMemory) recallRAG(query string, embedder Embedder) ([]UnifiedResult, error) {
-	entry := u.cfg.ActiveRagStore()
-	if entry == nil || embedder == nil {
-		return nil, nil
-	}
-	topK := u.cfg.TopK
-	if topK <= 0 {
-		topK = 5
-	}
-	dbPath, err := u.ws.AbsPath(entry.DBPath)
-	if err != nil {
-		return nil, err
-	}
-	ragStore, err := NewRagStore(dbPath, entry.EmbeddingModel)
-	if err != nil {
-		return nil, err
-	}
-	defer ragStore.Close()
-
-	chunks, err := ragStore.Query(query, embedder, topK)
-	if err != nil {
-		return nil, err
-	}
-	var out []UnifiedResult
-	for _, c := range chunks {
-		out = append(out, UnifiedResult{
-			Source:  "rag",
-			ID:      fmt.Sprintf("rag:%d", c.ID),
-			Content: c.Content,
-			Score:   c.Score,
-		})
-	}
-	return out, nil
-}
-
 // kbConceptRecallLimit caps both the concept-tag primary path and the
-// substring fallback path in recallKB, matching the pre-existing fallback cap.
+// substring fallback path in recallKB.
 const kbConceptRecallLimit = 5
 
-// recallKB returns knowledge-base content related to query. It first tries
-// concept-tag matching (kb.RecallByText, which matches concept names in query
-// and recalls what is linked to them) — not scoped to CurrentProjectID, since a tagged
-// concept is a deliberate cross-project signal. When no concept matches (or
-// none of the matches carry surfaceable content — see formatConceptMatch),
-// it falls back to the original substring scan over the current project's
+// recallKB returns knowledge-base content related to query, through the
+// installed kb (DR-0034, DR-0037 item 4). It first runs `kb concept recall`,
+// which matches concept names in query and recalls what is linked to them,
+// across projects, naming each cited work and flagging a retracted one. When
+// that gives nothing to inject (no concept matched, or only unreviewed
+// document rows), it falls back to a substring scan of the current project's
 // observations.
 func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 	dbPath := u.cfg.KnowledgeDB
@@ -294,41 +249,76 @@ func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 			return nil, err
 		}
 	}
-	kb, err := knowledge.Open(dbPath)
-	if err != nil {
-		return nil, err
-	}
-	defer kb.Close()
-
 	if query != "" {
-		// The same call `kb concept recall` makes (knowledge DR-0051), so what
-		// Harvey injects and what a curator sees at the command line agree.
-		recall, err := kb.RecallByText(query, kbConceptRecallLimit, "")
+		recall, err := kbRecallAt(u.ws.Root, dbPath, 0, query, kbConceptRecallLimit)
 		if err != nil {
 			return nil, err
 		}
 		var out []UnifiedResult
 		for _, h := range recall.Hits {
-			content := formatConceptMatch(h.ConceptMatch)
+			content := FormatKBRecallHit(h)
 			if content == "" {
 				continue
 			}
-			content += formatHitProvenance(h.HitProvenance)
+			retracted := h.Retracted
 			out = append(out, UnifiedResult{
-				Source:  "kb",
-				ID:      fmt.Sprintf("kb:%s:%d", h.SourceType, h.ID),
-				Content: content,
-				Score:   0.6,
+				Source:    "kb",
+				ID:        h.Ref(),
+				Content:   content,
+				Score:     0.6,
+				Retracted: &retracted,
 			})
 		}
 		if len(out) > 0 {
 			return out, nil
 		}
 	}
+	return u.recallKBSubstring(dbPath, query)
+}
 
-	obs, err := kb.Observations(u.cfg.CurrentProjectID)
+// recallKBSubstring is recallKB's fallback: the current project's
+// observations whose body contains query, newest first as kb lists them.
+func (u *UnifiedMemory) recallKBSubstring(dbPath, query string) ([]UnifiedResult, error) {
+	if u.cfg.CurrentProjectID <= 0 {
+		return nil, nil
+	}
+	so, _, code, err := runKBJSON(u.ws.Root, dbPath, 0, "project", "list")
 	if err != nil {
 		return nil, err
+	}
+	if code != 0 {
+		return nil, kbExitError(code, false)
+	}
+	var projects []struct {
+		ID   int64
+		Name string
+	}
+	if err := json.Unmarshal(so, &projects); err != nil {
+		return nil, fmt.Errorf("kb project list: unreadable output: %w", err)
+	}
+	name := ""
+	for _, p := range projects {
+		if p.ID == u.cfg.CurrentProjectID {
+			name = p.Name
+		}
+	}
+	if name == "" {
+		return nil, nil
+	}
+	so, _, code, err = runKBJSON(u.ws.Root, dbPath, 0, "observation", "list", "--project", name)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, kbExitError(code, false)
+	}
+	var obs []struct {
+		ID   int64
+		Kind string
+		Body string
+	}
+	if err := json.Unmarshal(so, &obs); err != nil {
+		return nil, fmt.Errorf("kb observation list: unreadable output: %w", err)
 	}
 	qLower := strings.ToLower(query)
 	var out []UnifiedResult
@@ -338,7 +328,7 @@ func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 		}
 		out = append(out, UnifiedResult{
 			Source:  "kb",
-			ID:      fmt.Sprintf("kb:%d", o.ID),
+			ID:      fmt.Sprintf("kb:observation:%d", o.ID),
 			Content: o.Kind + ": " + o.Body,
 			Score:   0.5,
 		})
@@ -347,53 +337,6 @@ func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 		}
 	}
 	return out, nil
-}
-
-// formatConceptMatch renders a knowledge.ConceptMatch as injectable context
-// text, or "" when the match has nothing surfaceable — an unreviewed document
-// match carries no Body by knowledge's own design (only a "reviewed" summary
-// is trustworthy content; see ConceptMatch's doc comment), so it is dropped
-// here rather than injected as an empty block.
-func formatConceptMatch(m knowledge.ConceptMatch) string {
-	switch m.SourceType {
-	case "observation":
-		return "observation: " + m.Body
-	case "record":
-		return "record: " + m.Title + "\n\n" + m.Body
-	case "document_gist", "document_section":
-		if m.Body == "" {
-			return ""
-		}
-		return "document: " + m.Title + "\n\n" + m.Body
-	default:
-		return ""
-	}
-}
-
-// formatHitProvenance renders the works a recalled row cites as a trailing
-// line of injectable context, or "" when it cites none (knowledge DR-0080).
-// A retracted source is named as retracted, with its note, so the model does
-// not lean on it; the row is still returned, because the retraction is itself
-// something the user should hear about.
-func formatHitProvenance(p knowledge.HitProvenance) string {
-	if len(p.Sources) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("\n\nCited:")
-	for _, s := range p.Sources {
-		b.WriteString("\n- " + s.Title)
-		if s.IdentifierValue != "" {
-			b.WriteString(" (" + s.IdentifierType + ": " + s.IdentifierValue + ")")
-		}
-		if s.Retracted {
-			b.WriteString(" — RETRACTED")
-			if s.RetractionNote != "" {
-				b.WriteString(": " + s.RetractionNote)
-			}
-		}
-	}
-	return b.String()
 }
 
 /** FormatContext formats a slice of UnifiedResults into a context injection
@@ -439,8 +382,6 @@ func sourceHeader(source string) string {
 		return "project facts"
 	case "experiential":
 		return "relevant experience"
-	case "rag":
-		return "knowledge"
 	case "kb":
 		return "project knowledge"
 	default:

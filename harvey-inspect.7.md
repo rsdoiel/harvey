@@ -50,7 +50,7 @@ Detail view for a specific model:
 
 # SEE ALSO
 
-  /model list         — models across llamafile, llama.cpp, and Ollama
+  /model list         — models across Ollama and hailo-ollama
   /model use NAME     — switch models (an Ollama model is probed on first alias)
   ollama show MODEL   — raw Modelfile, run in a shell
   /help model

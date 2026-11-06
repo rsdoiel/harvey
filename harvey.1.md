@@ -17,15 +17,15 @@ It was inspired by Claude Code but designed for local language model systems
 running on small computers like a Raspberry Pi. Language model systems are
 commonly called "AI models" or "AI"; harvey treats them as a programmable
 interface for deliberate, documented work. harvey supports language model
-systems via llamafile (self-contained executables from Mozilla) and Ollama,
+systems via Ollama and hailo-ollama,
 and scales from resource-constrained hardware to more capable computers.
 harvey can be compiled to run on any system supported by Go. The project
 distributes executables for Linux, macOS, and Windows on x86_64 and aarch64.
 
 harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It connects to a local language model system — llamafile or
-Ollama — and opens an interactive natural language programming session.
-Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI) can be
+system prompt. It connects to a local language model system — Ollama or
+hailo-ollama — and opens an interactive natural language programming session.
+Other Ollama-shaped servers on this machine or the local network can be
 added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
@@ -69,15 +69,6 @@ completion SHELL [-install]
 --ollama URL
 : Ollama base URL (default: http://localhost:11434)
 
---llamafile PATH
-: connect to PATH for this session (not persisted to harvey.yaml)
-
---llamafile-url URL
-: override the llamafile API base URL (default: http://localhost:8080)
-
---llamafile-dir PATH
-: override the llamafile discovery directory (default: ~/Models)
-
 -w, --workdir DIR
 : workspace directory (default: current directory)
 
@@ -104,9 +95,11 @@ completion SHELL [-install]
 
 --debug
 : enable diagnostic mode: sets OLLAMA_DEBUG=1 in the Ollama subprocess and
-  writes a JSONL event log to agents/logs/harvey-TIMESTAMP.jsonl covering
-  every LLM request/response, RAG injection, tool call, and skill dispatch.
-  Use "harvey --help status" to see the log path during a session.
+  adds level-debug events to the session log (agents/sessions/NAME.jsonl),
+  such as the exact messages sent with each request. The session log is
+  always written; --debug only makes it more detailed, and rendering and
+  kb ingest skip the debug events. Use "harvey --help status" to see the
+  log path during a session.
 
 --json
 : on a failing command line or session, print the error as
@@ -116,14 +109,9 @@ completion SHELL [-install]
 
 # ENVIRONMENT
 
-ANTHROPIC_API_KEY   API key for Anthropic Claude (optional, for /route add NAME anthropic://)
-DEEPSEEK_API_KEY    API key for DeepSeek (optional, for /route add NAME deepseek://)
-GEMINI_API_KEY      API key for Google Gemini (optional; GOOGLE_API_KEY also accepted)
-MISTRAL_API_KEY     API key for Mistral (optional, for /route add NAME mistral://)
-OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
-
-All of the above API key variables are filtered out of every child process
-environment — they are never passed to commands run via ! or /run.
+Common API key variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_* and
+similar) are filtered out of every child process environment — they are
+never passed to commands run via ! or /run. Harvey itself reads none of them.
 
 # EXIT STATUS
 
@@ -147,12 +135,17 @@ went wrong from the number:
 
 66
 : A named input is missing or is the wrong kind of thing: the -w directory, the
-  --continue or --replay file, the init source, or the --llamafile file. These
-  are checked before a model is started.
+  --continue or --replay file, or the init source. These
+  are checked before a model is started. Also a model that its service does
+  not have: one named with -m (or in ollama.model, or draft.model) that is not
+  installed on the Ollama, hailo-ollama or services: entry it names. The
+  message lists what is installed.
 
 69
 : A service cannot be reached: no model is connected and nobody is at a
-  terminal to choose one, or a llamafile will not start.
+  terminal to choose one, or a model is named on a service (hailo, or one in
+  the services: map) that is not answering. There is no fallback to another
+  service.
 
 70
 : An internal error, or one nothing classified. Please report it.
@@ -172,6 +165,9 @@ went wrong from the number:
 
 78
 : agents/harvey.yaml is present but malformed, and nobody is at a terminal.
+  A bad entry in its services: map counts: a name of ollama or hailo, a name
+  with a slash, two names that differ only in case, an engine other than
+  ollama or hailo, or a URL that is not http or https.
 
 A session is interactive when standard input is a terminal, except that --replay
 without --replay-continue never reaches the prompt and counts as not
@@ -230,12 +226,11 @@ are also available from the shell: harvey --help TOPIC.
 **Model and backend**
 
 /model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...]
-: unified model management across llamafile, Ollama, and llama.cpp backends;
-  place .llamafile or .gguf files in ~/Models/ — Harvey discovers them automatically;
-  Ollama models are listed live when Ollama is running; use ollama CLI for pull/rm
+: unified model management across Ollama and hailo-ollama;
+  models are listed live when the server is running; use the ollama CLI for pull/rm
 
 /workspace <status|init [PATH]>
-: show workspace root, alias count and profile; seed aliases from another workspace
+: show workspace root and alias count; seed aliases from another workspace
 
 /inspect [MODEL]
 : show detailed model information (Ollama only)
@@ -245,8 +240,17 @@ are also available from the shell: harvey --help TOPIC.
 
 **Context and history**
 
-/context <show|add TEXT...|clear>
-: manage pinned context that survives /clear
+/context
+: show what the model sees on the next turn
+
+/pin <EVENT_ID|kb:TYPE:ID|--text TEXT...>
+: keep text, a session event or a knowledge-base row in front of the model for this session
+
+/pins
+: list the pins with their cost and share of the prompt limit
+
+/unpin <N|PIN_ID|REF>
+: stop keeping a pin in front of the model
 
 /clear
 : reset conversation history (system prompt and pinned context survive)
@@ -258,12 +262,9 @@ are also available from the shell: harvey --help TOPIC.
 : show active backend, token usage, routing, recording, and debug state
 
 /hint
-: show actionable suggestions for improving results (RAG, memory, KB)
+: show actionable suggestions for improving results (memory, KB)
 
 **Sessions**
-
-/record <start [FILE]|stop|status>
-: start or stop Fountain session recording
 
 /rename NAME
 : rename the active session file without interrupting recording
@@ -273,8 +274,11 @@ are also available from the shell: harvey --help TOPIC.
 
 **Knowledge base**
 
-/kb <status|search TEXT|inject [PROJECT]|project [ID]|observe KIND BODY|concept NAME|source|retract ID|cite ID...|show ID|check-retractions>
-: query and update the SQLite knowledge base
+/kb [OPTIONS] VERB [ARGS...]
+: run the installed kb on the workspace knowledge base (kb(1)); /kb inject [PROJECT] adds knowledge base content to the conversation, and /kb project use ID sets the current project for inject and learn
+
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
+: read a recorded session and write what a model finds worth keeping to the knowledge base as draft observations (at most 5; --limit 0 for all). A draft is not searchable until you promote it with kb observation review promote in a normal shell
 
 /kb learn ingest [--min-words N] [--all] [--dry-run]
 : offer recorded sessions (at least 200 words) and hand-off notes to the knowledge base as documents, and ingest the ones you choose
@@ -288,17 +292,11 @@ are also available from the shell: harvey --help TOPIC.
 /kb learn concepts [--limit N]
 : suggest new concepts from the ingested documents; you pick which become concepts, then see each affected document as a diff of changed lines and choose whether to write it. Writes obey the permissions table; Fountain documents (sessions, hand-offs) are never rewritten
 
-/rag <list|new NAME|use NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
-: manage retrieval-augmented generation stores
-
-/memory <mine|list|show|forget|status|recall|profile> [args...]
+/memory <mine|list|show|forget|status|recall> [args...]
 : manage the session-experience memory store; mine and recall typed patterns
 
 /recall QUERY
 : search all knowledge silos (alias for /memory recall)
-
-/profile <list|show|edit|use|rename> [args...]
-: manage the workspace profile (alias for /memory profile)
 
 **Skills**
 

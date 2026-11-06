@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,66 +22,6 @@ func TestNewAssayClient_ReturnsNonNilClient(t *testing.T) {
 		t.Fatal("newAssayClient returned nil")
 	}
 	_ = client.Close()
-}
-
-// TestListOpenAIModels_ParsesModelIDs verifies that listOpenAIModels extracts
-// model IDs from the /v1/models JSON response.
-func TestListOpenAIModels_ParsesModelIDs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/models" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"object":"list","data":[{"id":"phi4-Q4_K_M"},{"id":"llama3.2:3b"}]}`)
-	}))
-	defer srv.Close()
-
-	models, err := listOpenAIModels(srv.URL)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(models) != 2 {
-		t.Fatalf("expected 2 models, got %d: %v", len(models), models)
-	}
-	if models[0] != "phi4-Q4_K_M" {
-		t.Errorf("expected phi4-Q4_K_M, got %s", models[0])
-	}
-	if models[1] != "llama3.2:3b" {
-		t.Errorf("expected llama3.2:3b, got %s", models[1])
-	}
-}
-
-// TestListOpenAIModels_SkipsEmptyIDs verifies that listOpenAIModels omits
-// entries with an empty model ID.
-func TestListOpenAIModels_SkipsEmptyIDs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"object":"list","data":[{"id":"phi4"},{"id":""}]}`)
-	}))
-	defer srv.Close()
-
-	models, err := listOpenAIModels(srv.URL)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(models) != 1 || models[0] != "phi4" {
-		t.Errorf("expected [phi4], got %v", models)
-	}
-}
-
-// TestListOpenAIModels_ErrorOnBadJSON verifies that listOpenAIModels returns
-// an error when the server responds with malformed JSON.
-func TestListOpenAIModels_ErrorOnBadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `not json`)
-	}))
-	defer srv.Close()
-
-	_, err := listOpenAIModels(srv.URL)
-	if err == nil {
-		t.Fatal("expected error for bad JSON, got nil")
-	}
 }
 
 // ─── buildGuideMessages ───────────────────────────────────────────────────────
@@ -123,7 +62,7 @@ func TestBuildGuideMessages_EmptyGuideTextFallsBackToPlain(t *testing.T) {
 // ─── writeReport (guide-compare) ──────────────────────────────────────────────
 
 // TestWriteReport_GuideCompare_RendersDeltaTable is the first direct test of
-// writeReport's rendering logic (none existed before this, for RagCompare
+// writeReport's rendering logic (none existed before this, for the compare
 // either). It constructs a base/guide result pair where the guide variant
 // fixes a failing check, and asserts the summary table shows the pass-count
 // delta.
@@ -186,6 +125,27 @@ func TestWriteReport_GuideCompare_RendersDeltaTable(t *testing.T) {
 func runAssay(t *testing.T, args ...string) (code int, out, errOut string) {
 	t.Helper()
 	var o, e bytes.Buffer
+	// Hermetic: a real hailo-ollama on :8000 (harvey.local has one) must not
+	// join a test run, so a test that names no --hailo gets a closed port.
+	hasHailo := false
+	for _, a := range args {
+		if a == "--hailo" || a == "-hailo" {
+			hasHailo = true
+		}
+	}
+	if !hasHailo {
+		args = append([]string{"--hailo", closedURL(t)}, args...)
+	}
+	// Most tests count requests, so the warm-up is off unless a test turns it on.
+	hasWarm := false
+	for _, a := range args {
+		if strings.HasPrefix(a, "--warmup") || strings.HasPrefix(a, "-warmup") {
+			hasWarm = true
+		}
+	}
+	if !hasWarm {
+		args = append([]string{"--warmup=false"}, args...)
+	}
 	code = mainRun(append([]string{"assay"}, args...), &o, &e)
 	return code, o.String(), e.String()
 }
@@ -211,15 +171,10 @@ func TestMainRun_UsageErrorsExitTwoWithNothingOnStdout(t *testing.T) {
 	}{
 		{"unknown flag", []string{"--bogus"}, "bogus"},
 		{"flag missing its value", []string{"--corpus"}, "corpus"},
-		{"bad integer value", []string{"--rag-top-k", "many"}, "rag-top-k"},
+		{"unknown option", []string{"--rag-db", "x"}, "rag-db"},
 		{"surplus positional argument", []string{"extra"}, "unexpected argument: extra"},
 		{"surplus after flags", []string{"--models", "m", "extra"}, "unexpected argument: extra"},
-		{"--rag-compare needs --rag-db", []string{"--rag-compare"}, "--rag-compare requires --rag-db"},
 		{"--guide-compare needs --guide-file", []string{"--guide-compare"}, "--guide-compare requires --guide-file"},
-		{"the two compares conflict", []string{"--rag-compare", "--rag-db", "x", "--guide-compare", "--guide-file", "y"},
-			"--guide-compare and --rag-compare are mutually exclusive"},
-		{"the two local backends conflict", []string{"--llamafile", "x", "--llamacpp", "http://x"},
-			"--llamafile and --llamacpp are mutually exclusive"},
 	} {
 		code, out, errOut := runAssay(t, tc.args...)
 		if code != 2 {
@@ -248,7 +203,7 @@ func TestMainRun_JSONFlagPrintsTheErrorEnvelope(t *testing.T) {
 		{"unrecognised flag", []string{"--json", "--bogus"}, "usage", 2},
 		{"single-dash spelling", []string{"-json", "--bogus"}, "usage", 2},
 		{"json after the bad flag", []string{"--bogus", "--json"}, "usage", 2},
-		{"hand-checked usage", []string{"--json", "--rag-compare"}, "usage", 2},
+		{"hand-checked usage", []string{"--json", "--guide-compare"}, "usage", 2},
 		{"corpus missing", []string{"--json", "--corpus", "/nonexistent/zzz.yaml"}, "no_input", 66},
 	} {
 		code, out, errOut := runAssay(t, tc.args...)
@@ -284,8 +239,8 @@ func TestMainRun_JSONFlagDoesNotAffectSuccess(t *testing.T) {
 // and the bulk rule: a run does everything, then exits with the class of the
 // first failed step. Failing automatic checks are results, not failures.
 
-// fakeModelServer speaks the parts of an OpenAI-compatible server assay uses
-// (/v1/chat/completions, streaming or not) and Ollama's /api/tags. A chat
+// fakeModelServer speaks the parts of an Ollama server assay uses
+// (/api/chat and /api/tags). A chat
 // request for a model in fail gets an HTTP 500.
 func fakeModelServer(t *testing.T, tags []string, fail ...string) *httptest.Server {
 	t.Helper()
@@ -297,10 +252,10 @@ func fakeModelServer(t *testing.T, tags []string, fail ...string) *httptest.Serv
 				models = append(models, map[string]string{"name": n})
 			}
 			json.NewEncoder(w).Encode(map[string]any{"models": models})
-		case "/v1/chat/completions":
+		case "/api/chat":
 			var req struct {
 				Model  string `json:"model"`
-				Stream bool   `json:"stream"`
+				Stream *bool  `json:"stream"`
 			}
 			json.NewDecoder(r.Body).Decode(&req)
 			for _, f := range fail {
@@ -309,18 +264,10 @@ func fakeModelServer(t *testing.T, tags []string, fail ...string) *httptest.Serv
 					return
 				}
 			}
-			if req.Stream {
-				w.Header().Set("Content-Type", "text/event-stream")
-				fmt.Fprint(w, `data: {"id":"1","object":"chat.completion.chunk","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"say hi"},"finish_reason":null}]}`+"\n\n")
-				fmt.Fprint(w, `data: {"id":"1","object":"chat.completion.chunk","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n")
-				fmt.Fprint(w, "data: [DONE]\n\n")
-				return
-			}
-			json.NewEncoder(w).Encode(map[string]any{
-				"id": "1", "object": "chat.completion", "model": req.Model,
-				"choices": []map[string]any{{"index": 0, "finish_reason": "stop",
-					"message": map[string]string{"role": "assistant", "content": "say hi"}}},
-			})
+			reply := map[string]any{"model": req.Model, "created_at": "2026-10-30T00:00:00Z",
+				"message": map[string]string{"role": "assistant", "content": "say hi"}, "done": true, "done_reason": "stop"}
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			json.NewEncoder(w).Encode(reply)
 		default:
 			http.NotFound(w, r)
 		}
@@ -379,10 +326,7 @@ func TestMainRun_InputsAndAvailabilityByClass(t *testing.T) {
 		{"corpus with no prompts", []string{"--corpus", empty, "--models", "m", "--ollama", up.URL}, 65},
 		{"category matches nothing", []string{"--corpus", corpus, "--models", "m", "--category", "nosuch", "--ollama", up.URL}, 1},
 		{"guide file missing", []string{"--corpus", corpus, "--models", "m", "--guide-file", filepath.Join(dir, "nope"), "--ollama", up.URL}, 66},
-		{"llamafile missing", []string{"--corpus", corpus, "--llamafile", filepath.Join(dir, "nope.llamafile")}, 66},
-		{"llamafile of the wrong kind", []string{"--corpus", corpus, "--llamafile", file}, 66},
 		{"ollama unreachable while listing models", []string{"--corpus", corpus, "--ollama", closed}, 69},
-		{"llama.cpp unreachable while listing models", []string{"--corpus", corpus, "--llamacpp", closed}, 69},
 		{"ollama up with no models", []string{"--corpus", corpus, "--ollama", up.URL}, 1},
 		{"output directory cannot be created", []string{"--corpus", corpus, "--models", "m", "--ollama", up.URL, "--output", filepath.Join(file, "sub")}, 73},
 	} {
@@ -390,19 +334,6 @@ func TestMainRun_InputsAndAvailabilityByClass(t *testing.T) {
 		if code != tc.want {
 			t.Errorf("%s: exit %d, want %d\nstderr: %.300s", tc.name, code, tc.want, errOut)
 		}
-	}
-}
-
-// A RAG store that cannot be opened is a classified failure, never 70.
-func TestMainRun_RagStoreThatCannotBeOpenedIsClassified(t *testing.T) {
-	dir := t.TempDir()
-	corpus := writeFile(t, dir, "corpus.yaml", oneCheckCorpus)
-	file := writeFile(t, dir, "afile", "x")
-	up := fakeModelServer(t, nil)
-	code, _, errOut := runAssay(t, "--corpus", corpus, "--models", "m", "--ollama", up.URL,
-		"--rag-db", filepath.Join(file, "sub", "r.db"), "--output", filepath.Join(dir, "out"))
-	if code == 0 || code == 70 {
-		t.Errorf("exit %d, want a classified failure\nstderr: %.300s", code, errOut)
 	}
 }
 

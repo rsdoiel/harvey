@@ -22,7 +22,7 @@ import (
  *     for the ToolExecutor, when used.
  *   useTools (bool)            — caller's request to use tools this turn.
  *   messages ([]Message)       — the bounded context to send.
- *   dbg      (*DebugLog)       — debug log; nil is accepted.
+ *   events   (ToolEvents)      — receives the tool calls for the session log; nil is accepted.
  *   w        (io.Writer)       — destination for streamed reply tokens.
  *
  * Returns:
@@ -34,12 +34,12 @@ import (
  *   err   (error)     — non-nil on transport or tool-loop failure.
  *
  * Example:
- *   updatedHistory, stats, err := runBoundedTurn(ctx, client, registry, cfg, true, messages, dbg, out)
+ *   updatedHistory, stats, err := runBoundedTurn(ctx, client, registry, cfg, true, messages, nil, out)
  */
-func runBoundedTurn(ctx context.Context, client LLMClient, registry *ToolRegistry, cfg *Config, useTools bool, messages []Message, dbg *DebugLog, w io.Writer) ([]Message, ChatStats, error) {
+func runBoundedTurn(ctx context.Context, client LLMClient, registry *ToolRegistry, cfg *Config, useTools bool, messages []Message, events ToolEvents, w io.Writer) ([]Message, ChatStats, error) {
 	if useTools && registry != nil {
 		ex := NewToolExecutor(registry, client, cfg)
-		ex.DebugLog = dbg
+		ex.Events = events
 		updatedHistory, stats, err := ex.RunToolLoop(ctx, messages, w)
 		return updatedHistory, stats, err
 	}

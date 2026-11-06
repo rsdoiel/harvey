@@ -504,6 +504,7 @@ func kbLearnConcepts(a *Agent, args []string, out io.Writer) error {
 	}
 	var tagged, declined, refused, fountain, stale int
 	applyAll, quit := false, false
+	defer func() { a.permScope = "" }()
 	for _, d := range docs {
 		if quit {
 			break
@@ -547,18 +548,22 @@ func kbLearnConcepts(a *Agent, args []string, out io.Writer) error {
 			choice, ended := promptAction(reader, out, "Write: "+rel, "")
 			if ended {
 				fmt.Fprintln(out, "\nInput ended; nothing more was changed.")
+				a.logAuthorsChoice("write", rel, actionQuit)
 				quit = true
 				continue
 			}
 			switch choice {
 			case actionNo:
+				a.logAuthorsChoice("write", rel, actionNo)
 				declined++
 				continue
 			case actionQuit:
+				a.logAuthorsChoice("write", rel, actionQuit)
 				quit = true
 				continue
 			case actionAll:
 				applyAll = true
+				a.permScope = "session" // the author's answer covers the files that follow
 			}
 		}
 		pid := projectID

@@ -1,0 +1,19 @@
+{
+  "hits": [
+    {
+      "kind": "observation",
+      "id": 1,
+      "project": "demo",
+      "concepts": [
+        "zebra"
+      ],
+      "excerpt": "zebra stripes repel flies",
+      "sources": [],
+      "retracted": false
+    }
+  ],
+  "matched": [
+    "zebra"
+  ],
+  "projects": []
+}

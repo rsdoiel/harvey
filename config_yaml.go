@@ -76,12 +76,24 @@ type ollamaYAML struct {
 	URL           string `yaml:"url,omitempty"`
 	Model         string `yaml:"model,omitempty"`
 	ContextLength int    `yaml:"context_length,omitempty"`
+	MaxContext    int    `yaml:"max_context,omitempty"` // the most window harvey asks for by default
 	Timeout       string `yaml:"timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
 }
 
 // hailoYAML is the on-disk representation of the hailo: section in harvey.yaml.
 type hailoYAML struct {
 	URL string `yaml:"url,omitempty"`
+}
+
+// serviceYAML is one entry of the services: map in harvey.yaml (DR-0049 item 10).
+type serviceYAML struct {
+	URL    string `yaml:"url"`
+	Engine string `yaml:"engine"`
+}
+
+// draftYAML is the on-disk representation of the draft: section in harvey.yaml.
+type draftYAML struct {
+	Model string `yaml:"model,omitempty"`
 }
 
 // skillsYAML is the on-disk representation of the skills: section in harvey.yaml.
@@ -110,6 +122,7 @@ type sessionYAML struct {
 
 // harveyYAML is the on-disk representation of harvey/harvey.yaml.
 type harveyYAML struct {
+	KB              kbYAML                    `yaml:"kb,omitempty"`
 	SessionsDir     string                    `yaml:"sessions_dir"`
 	AgentsDir       string                    `yaml:"agents_dir"`
 	ModelCacheDB    string                    `yaml:"model_cache_db"`
@@ -121,11 +134,13 @@ type harveyYAML struct {
 	Skills          skillsYAML                `yaml:"skills,omitempty"`
 	Ollama          ollamaYAML                `yaml:"ollama,omitempty"`
 	Hailo           hailoYAML                 `yaml:"hailo,omitempty"`
+	Draft           draftYAML                 `yaml:"draft,omitempty"`
+	Services        map[string]serviceYAML    `yaml:"services,omitempty"`
 	Security        securityYAML              `yaml:"security,omitempty"`
 	Session         sessionYAML               `yaml:"session,omitempty"`
 	Memory          memoryYAML                `yaml:"memory,omitempty"`
-	Llamafile       llamafileYAML             `yaml:"llamafile,omitempty"`
-	LlamaCpp        llamacppYAML              `yaml:"llamacpp,omitempty"`
+	Llamafile       any                       `yaml:"llamafile,omitempty"` // removed (DR-0033); kept to detect it
+	LlamaCpp        any                       `yaml:"llamacpp,omitempty"`  // removed (DR-0033); kept to detect it
 	Chunking        chunkingYAML              `yaml:"chunking,omitempty"`
 	LearnModel      string                    `yaml:"learn_model,omitempty"`
 }
@@ -146,33 +161,6 @@ type toolsYAML struct {
 	ToolResultCompaction *bool `yaml:"tool_result_compaction,omitempty"`
 }
 
-type llamafileEntryYAML struct {
-	Name          string `yaml:"name"`
-	Path          string `yaml:"path"`
-	ContextLength int    `yaml:"context_length,omitempty"`
-}
-
-type llamafileYAML struct {
-	ModelsDir      string               `yaml:"models_dir,omitempty"`
-	Active         string               `yaml:"active,omitempty"`
-	URL            string               `yaml:"url,omitempty"`
-	StartupTimeout string               `yaml:"startup_timeout,omitempty"` // e.g. "120s", "2m"
-	GPULayers      *int                 `yaml:"gpu_layers,omitempty"`      // -ngl value; nil = use default (0, CPU-only)
-	MaxTokens      int                  `yaml:"max_tokens,omitempty"`      // cap on tokens per completion; 0 = no limit
-	Models         []llamafileEntryYAML `yaml:"models,omitempty"`
-}
-
-type llamacppYAML struct {
-	ServerBin    string `yaml:"server_bin,omitempty"`    // path to llama-server; "" = PATH lookup
-	ModelsDir    string `yaml:"models_dir,omitempty"`    // directory for *.gguf files
-	URL          string `yaml:"url,omitempty"`           // API base URL; default http://127.0.0.1:8081
-	CtxSize      int    `yaml:"ctx_size,omitempty"`      // --ctx-size; 0 = server default
-	Threads      int    `yaml:"threads,omitempty"`       // --threads; 0 = server default
-	GPULayers    *int   `yaml:"gpu_layers,omitempty"`    // --n-gpu-layers; nil = not set (0 = CPU-only)
-	StartTimeout string `yaml:"start_timeout,omitempty"` // e.g. "120s", "2m"
-	PinCPU       bool   `yaml:"pin_cpu,omitempty"`       // taskset -c 0-(threads-1); default false
-}
-
 type rollingSummaryYAML struct {
 	Enabled   *bool   `yaml:"enabled,omitempty"`
 	WarnAtPct float64 `yaml:"warn_at_pct,omitempty"`
@@ -181,6 +169,12 @@ type rollingSummaryYAML struct {
 
 type knowledgeBaseYAML struct {
 	Path string `yaml:"path,omitempty"`
+}
+
+// kbYAML is the kb: section of harvey.yaml: settings about how harvey uses the
+// installed kb, apart from where its database is.
+type kbYAML struct {
+	Project string `yaml:"project,omitempty"` // the kb project /kb draft uses when --project is not given
 }
 
 type memoryYAML struct {

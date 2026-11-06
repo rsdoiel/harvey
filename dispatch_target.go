@@ -35,28 +35,10 @@ type DispatchTarget struct {
 }
 
 // currentActiveName returns the name that identifies the agent's currently
-// active local model for lookup purposes: the llamafile registry name when
-// set, else the configured Ollama model. Empty when neither is set.
+// active local model for lookup purposes: the configured Ollama model.
+// Empty when none is set.
 func currentActiveName(a *Agent) string {
-	if a.Config.Llamafile.Active != "" {
-		return a.Config.Llamafile.Active
-	}
 	return a.Config.Ollama.Model
-}
-
-// wireDebugLog sets dbg on client when it is an *AnyLLMClient, so its own
-// chatInternal logs correctly. clientForEndpoint and attemptModelSwitch's
-// Ollama branch both construct fresh *AnyLLMClient instances that otherwise
-// carry a nil DebugLog forever — found while fixing the chunk-analysis
-// double-logging bug (TODO.md): removing the caller-side logging in
-// RunChunkedAnalysis is only safe once every client resolveDispatchTarget can
-// return is guaranteed to log its own calls. Returns client unchanged
-// (including when it isn't an *AnyLLMClient at all, e.g. a test double).
-func wireDebugLog(client LLMClient, dbg *DebugLog) LLMClient {
-	if ac, ok := client.(*AnyLLMClient); ok {
-		ac.DebugLog = dbg
-	}
-	return client
 }
 
 /** resolveDispatchTarget resolves name (an @mention-style identifier, or a
@@ -68,7 +50,7 @@ func wireDebugLog(client LLMClient, dbg *DebugLog) LLMClient {
  *      Restore is a no-op.
  *   2. name already matches the active local model (case-insensitive) —
  *      no switch needed; Restore is a no-op.
- *   3. A local llamafile registry entry or model alias — performs a real,
+ *   3. A local model alias — performs a real,
  *      persistent switch via attemptModelSwitch (or
  *      a.attemptModelSwitchOverride in tests), capturing the pre-switch
  *      state first so Restore can correctly relaunch it afterward.
@@ -98,24 +80,34 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 			if err != nil {
 				return DispatchTarget{}, true, err
 			}
-			return DispatchTarget{Client: wireDebugLog(client, a.DebugLog), Restore: noop}, true, nil
+			return DispatchTarget{Client: a.wireSessionLog(client), Restore: noop}, true, nil
 		}
 	}
 
 	if active := currentActiveName(a); active != "" && strings.EqualFold(active, name) {
-		return DispatchTarget{Client: wireDebugLog(a.Client, a.DebugLog), Restore: noop}, true, nil
+		return DispatchTarget{Client: a.wireSessionLog(a.Client), Restore: noop}, true, nil
 	}
 
 	switchFn := func(n string, w io.Writer) (bool, error) { return attemptModelSwitch(a, n, w) }
 	if a.attemptModelSwitchOverride != nil {
 		switchFn = a.attemptModelSwitchOverride
+	} else if service, _ := a.parseModelRef(name); service != "" {
+		// "service/model" names a model on a service (DR-0049): installed there
+		// (no_input if not) and the service up (unavailable if not).
+		switchFn = func(n string, w io.Writer) (bool, error) { return true, a.useStartupModel(n, w) }
 	}
 
-	// Captured BEFORE switching — switchFn (attemptModelSwitch's llamafile
-	// branch, via switchLlamafileModel) overwrites a.Config.Llamafile.Active
-	// as part of performing the switch, so this must be read now, not later.
-	prevLlamafileActive := a.Config.Llamafile.Active
+	// Captured BEFORE switching — the switch overwrites it.
 	prevOllamaModel := a.Config.Ollama.Model
+	prevService, prevEngine, prevURL := "ollama", "ollama", a.Config.Ollama.URL
+	prevBackend := a.Backend
+	if ac, ok := a.Client.(*OllamaChatClient); ok {
+		if e := ac.Engine(); e != "" {
+			prevEngine = e
+		}
+		prevService = ac.Service()
+		prevURL = ac.BackendURL()
+	}
 
 	switched, err := switchFn(name, out)
 	if err != nil {
@@ -126,12 +118,9 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 	}
 
 	restore := func() {
-		if prevLlamafileActive != "" {
-			_, _ = switchFn(prevLlamafileActive, out)
-			return
-		}
-		a.useOllamaClient(prevOllamaModel)
+		a.useServiceModelAt(prevService, prevEngine, prevURL, prevOllamaModel)
+		a.Backend = prevBackend
 	}
 
-	return DispatchTarget{Client: wireDebugLog(a.Client, a.DebugLog), Restore: restore}, true, nil
+	return DispatchTarget{Client: a.wireSessionLog(a.Client), Restore: restore}, true, nil
 }

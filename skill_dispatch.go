@@ -122,7 +122,7 @@ func (a *Agent) autoLoadSkill(input string, out io.Writer) bool {
 			continue
 		}
 		fmt.Fprintf(out, dim("  (trigger matched skill %q)\n"), name)
-		if err := loadSkill(a, skill, out); err != nil {
+		if err := loadSkillAs(a, skill, out, "auto"); err != nil {
 			fmt.Fprintf(out, red("  ✗ skill load error: ")+"%v\n", err)
 		}
 		return true

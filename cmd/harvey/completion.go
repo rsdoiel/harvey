@@ -47,11 +47,8 @@ const (
  */
 var completionValueKind = map[string]string{
 	"-m": valueFree, "--model": valueFree,
-	"--ollama":        valueFree,
-	"--llamafile":     valuePath,
-	"--llamafile-url": valueFree,
-	"--llamafile-dir": valuePath,
-	"-w":              valuePath, "--workdir": valuePath,
+	"--ollama": valueFree,
+	"-w":       valuePath, "--workdir": valuePath,
 	"--record-file":   valuePath,
 	"--continue":      valuePath,
 	"--replay":        valuePath,

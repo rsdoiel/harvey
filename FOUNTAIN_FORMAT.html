@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -34,33 +33,33 @@ Claude Code, and other LLM-based agents.</p>
 <h3 id="why-fountain">Why Fountain?</h3>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Requirement</th>
 <th scope="col">Fountain Solution</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>Human-readable</td>
 <td>Plain text, familiar screenplay format</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Machine-parseable</td>
 <td>Strict structure, regex-friendly</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Version-control friendly</td>
 <td>Text files, good diff/merge behavior</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Multi-participant</td>
 <td>Natural character/dialogue model</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Extensible</td>
 <td>Scene descriptions, parenthetical notes</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Cross-agent compatible</td>
 <td>Open format, shared with Claude Code</td>
 </tr>
@@ -74,19 +73,19 @@ Claude Code, and other LLM-based agents.</p>
 <col style="width: 23%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Extension</th>
 <th scope="col">Created By</th>
 <th scope="col">Notes</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>.spmd</code></td>
 <td>Harvey</td>
 <td>Primary format for new recordings</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>.fountain</code></td>
 <td>Any Fountain-compatible tool</td>
 <td>Accepted by Harvey for reading</td>
@@ -107,7 +106,7 @@ and role.</p>
 <col style="width: 22%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Type</th>
 <th scope="col">Naming Convention</th>
 <th scope="col">Example</th>
@@ -115,25 +114,25 @@ and role.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>Human User</td>
 <td>ALL-CAPS (matches <code>Author:</code>)</td>
 <td>RSDOIEL</td>
 <td>Human participant</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Harvey Agent</td>
 <td><strong>HARVEY</strong></td>
 <td>HARVEY</td>
-<td>Harvey using local Ollama/Llamafile</td>
+<td>Harvey using local Ollama</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Routed Ollama</td>
 <td><strong>ROUTE_NAME</strong> (ALL-CAPS)</td>
 <td>PI2, NODE1, JULIE</td>
 <td>Remote Ollama via <code>/route add</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td>Cloud Model</td>
 <td><strong>MODEL_NAME</strong> (ALL-CAPS)</td>
 <td>MISTRAL, CLAUDE, GEMMA4</td>
@@ -143,9 +142,8 @@ and role.</p>
 </table>
 <h3 id="character-identity-rules">Character Identity Rules</h3>
 <p><strong>HARVEY</strong> represents Harvey when: - Using its locally
-configured Ollama backend - Using its locally configured Llamafile
-backend - The active model is noted in the scene description:
-<code>Model: llama3:latest</code></p>
+configured Ollama backend - The active model is noted in the scene
+description: <code>Model: llama3:latest</code></p>
 <p><strong>ROUTE_NAME</strong> represents a remote Ollama instance when:
 - Defined via <code>/route add NAME URL</code> (e.g.,
 <code>/route add pi2 ollama://192.168.1.2:11434</code>) - Harvey
@@ -165,29 +163,29 @@ conversation without Harvey)</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Pattern</th>
 <th scope="col">Matches</th>
 <th scope="col">Example</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>^[A-Z]{2,}$</code></td>
 <td>Cloud model names</td>
 <td>CLAUDE, MISTRAL, LLAMA3</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>^[A-Z][a-zA-Z0-9_-]*$</code></td>
 <td>Mixed case (rare)</td>
 <td>Julie (if configured as route)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>^HARVEY$</code></td>
 <td>Harvey agent</td>
 <td>HARVEY</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Author name (from title)</td>
 <td>Human user</td>
 <td>RSDOIEL</td>
@@ -214,10 +212,10 @@ User prompt here...
 
 HARVEY
 Harvey&#39;s response using the local model.</code></pre>
-<p><strong>Use cases:</strong> - Harvey responding with its local
-Ollama/Llamafile model - Agent actions (file writes) - Skill activations
-- Shell command execution - Session context recall (memory injection at
-session start)</p>
+<p><strong>Use cases:</strong> - Harvey responding with its local Ollama
+model - Agent actions (file writes) - Skill activations - Shell command
+execution - Session context recall (memory injection at session
+start)</p>
 <h3 id="ext.-exterior-scenes-remote-computation">EXT. — Exterior Scenes
 (Remote Computation)</h3>
 <p>The computation runs <strong>on a remote system</strong> — a remote
@@ -268,7 +266,7 @@ optional except <code>Title:</code> and <code>Author:</code>.</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Field</th>
 <th scope="col">Required</th>
 <th scope="col">Example</th>
@@ -276,37 +274,37 @@ optional except <code>Title:</code> and <code>Author:</code>.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>Title:</code></td>
 <td>Yes</td>
 <td><code>Harvey Session</code></td>
 <td>Session title</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Credit:</code></td>
 <td>No</td>
 <td><code>Recorded by Harvey</code></td>
 <td>Recording application</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>Author:</code></td>
 <td>Yes</td>
 <td><code>RSDOIEL</code></td>
 <td>Human participant (ALL-CAPS)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Date:</code></td>
 <td>No</td>
 <td><code>2026-05-04 18:30:00</code></td>
 <td>Session start timestamp</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>Draft date:</code></td>
 <td>No</td>
 <td><code>2026-05-04</code></td>
 <td>Date only</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Characters:</code></td>
 <td>No</td>
 <td><code>RSDOIEL, HARVEY, MISTRAL</code></td>
@@ -349,29 +347,29 @@ prefix:</p>
 <col style="width: 57%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Prefix</th>
 <th scope="col">Scene type</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>INT. CONTEXT RECALL</code></td>
 <td>Memory injection at session start</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>INT. CHUNK ANALYSIS —</code></td>
 <td>Chunked document analysis (filename follows the dash)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>INT. AGENT MODE</code></td>
 <td>File write operations</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>INT. SKILL</code></td>
 <td>Skill activation</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>INT. SHELL</code></td>
 <td>Shell command execution</td>
 </tr>
@@ -654,11 +652,11 @@ Forwarding to CLAUDE.
 CLAUDE
 Second opinion: I agree, but consider adding tests.</code></pre>
 <p><strong>Note:</strong> This scenario only applies when the models are
-local (e.g. local aliases or Llamafile models). If <span
-class="citation" data-cites="mistral">@mistral</span> and <span
-class="citation" data-cites="claude">@claude</span> are registered
-remote routes, each dispatch creates its own EXT. scene rather than
-appearing together in a single INT. scene.</p>
+local (e.g. local aliases). If <span class="citation"
+data-cites="mistral">@mistral</span> and <span class="citation"
+data-cites="claude">@claude</span> are registered remote routes, each
+dispatch creates its own EXT. scene rather than appearing together in a
+single INT. scene.</p>
 <h2 id="scene-types-reference">Scene Types Reference</h2>
 <h3 id="chat-scenes-int.-and-talking-or-ext.-and">Chat Scenes
 (<code>INT. … AND … TALKING</code> or <code>EXT. … AND …</code>)</h3>
@@ -816,60 +814,60 @@ THE END.</code></pre>
 <col style="width: 43%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Field</th>
 <th scope="col">Required</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>id</code></td>
 <td>Yes</td>
 <td>Unique identifier, format <code>{type}_{6hex}</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>type</code></td>
 <td>Yes</td>
 <td>One of <code>tool_use</code>, <code>workflow</code>,
 <code>user_preference</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>created_at</code></td>
 <td>Yes</td>
 <td>RFC3339 timestamp</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>updated_at</code></td>
 <td>Yes</td>
 <td>RFC3339 timestamp</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>supersedes</code></td>
 <td>Yes</td>
 <td>IDs of memories this one replaces (empty list if none)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>tags</code></td>
 <td>Yes</td>
 <td>Keyword list for filtering</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>description</code></td>
 <td>Yes</td>
 <td>One-sentence action-oriented summary</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>summary</code></td>
 <td>Yes</td>
 <td>2-3 sentences optimised for semantic search</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>source_session</code></td>
 <td>No</td>
 <td>Path to the session this was mined from</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>metadata</code></td>
 <td>No</td>
 <td>Arbitrary key-value context</td>
@@ -879,21 +877,21 @@ THE END.</code></pre>
 <p><strong>Memory types:</strong></p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Type</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>tool_use</code></td>
 <td>A tool, command, or API trick that worked well</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>workflow</code></td>
 <td>A multi-step process that should be repeated</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>user_preference</code></td>
 <td>A stated or demonstrated user preference</td>
 </tr>
@@ -1145,39 +1143,39 @@ next scene.</p>
 <h3 id="required-elements">Required Elements</h3>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Element</th>
 <th scope="col">Required</th>
 <th scope="col">Validation</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>Title:</code></td>
 <td>Yes</td>
 <td>Non-empty</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Author:</code></td>
 <td>Yes</td>
 <td>ALL-CAPS, non-empty</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>FADE IN:</code></td>
 <td>Yes</td>
 <td>Exact match</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>THE END.</code></td>
 <td>Yes</td>
 <td>Exact match at end</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Scene headings</td>
 <td>Per scene</td>
 <td>Valid INT./EXT. format</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Scene descriptions</td>
 <td>Per scene</td>
 <td>Contains <code>Model:</code> and <code>Workspace:</code></td>
@@ -1191,30 +1189,30 @@ next scene.</p>
 <col style="width: 53%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Rule</th>
 <th scope="col">Error</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>Character not ALL-CAPS</td>
 <td>Warn: “Character name not uppercase: {name}”</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Character in INT. scene not in heading</td>
 <td>Warn: “Character {name} not in scene heading”</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>HARVEY missing from INT. scene</td>
 <td>Warn: “INT. scene without HARVEY”</td>
 </tr>
-<tr>
+<tr class="even">
 <td>HARVEY in EXT. scene without routing action</td>
 <td>Warn: “EXT. scene has HARVEY but no ‘Harvey routing to’ action
 line”</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Unknown character type</td>
 <td>Warn: “Unknown character type: {name}”</td>
 </tr>
@@ -1227,17 +1225,17 @@ line”</td>
 <col style="width: 53%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Rule</th>
 <th scope="col">Error</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>Missing <code>Model:</code> in description</td>
 <td>Warn: “Scene missing Model: declaration”</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Model in description doesn’t match character</td>
 <td>Warn: “Model mismatch: description={x}, character={y}”</td>
 </tr>
@@ -1250,7 +1248,7 @@ line”</td>
 <li><strong>Always include</strong> <code>Model:</code> or endpoint URL
 and <code>Workspace:</code> in scene descriptions</li>
 <li><strong>Use INT.</strong> when computation runs locally (local
-Ollama, Llamafile, shell, file writes, skills)</li>
+Ollama, shell, file writes, skills)</li>
 <li><strong>Use EXT.</strong> when computation runs remotely (registered
 routes, cloud APIs)</li>
 <li><strong>Include HARVEY</strong> in EXT. dialogue when Harvey is the
@@ -1316,14 +1314,14 @@ elements.</p>
 <col style="width: 37%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Version</th>
 <th scope="col">Date</th>
 <th scope="col">Changes</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>1.3</td>
 <td>2026-06-27</td>
 <td>Added <code>INT. CHUNK ANALYSIS — FILENAME</code> scene type for
@@ -1331,7 +1329,7 @@ chunked document analysis; added <code>[[chunk:]]</code>,
 <code>[[chunk-result:]]</code>, <code>[[synthesis:]]</code> notes;
 documented special-format scene heading regex variants</td>
 </tr>
-<tr>
+<tr class="even">
 <td>1.2</td>
 <td>2026-06-24</td>
 <td>Redefined INT./EXT. as local/remote computation; EXT. scenes now
@@ -1340,13 +1338,13 @@ used for route dispatch and cloud API calls; added
 <code>[[rag:]]</code>, <code>[[recall:]]</code> notes; added
 <code>INT. CONTEXT RECALL</code> scene type</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>1.1</td>
 <td>2026-05-25</td>
 <td>Added <code>INT. MEMORY &lt;TIMESTAMP&gt;</code> scene type for
 memory documents</td>
 </tr>
-<tr>
+<tr class="even">
 <td>1.0</td>
 <td>2026-05-04</td>
 <td>Initial specification with multi-model character attribution</td>

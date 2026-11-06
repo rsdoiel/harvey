@@ -4,8 +4,8 @@ Project-specific guidance for the **harvey** coding agent (Go).
 
 ## Session recording & safe mode
 
-`.spmd` Fountain screenplays record each turn in `agents/sessions/` when
-active (`-r` flag or `/record start`). Safe mode (default on, `harvey >`
+Every session is logged to `agents/sessions/NAME.jsonl`, and a `.spmd` Fountain
+screenplay is rendered from the log when the session ends. Safe mode (default on, `harvey >`
 prompt) restricts auto-executed commands to the configured allowlist —
 don't suggest disabling it.
 
@@ -45,7 +45,7 @@ make clean
 Attribute RAG-sourced content at the point you use it, not in a trailing
 footnote — e.g. "The WAL-mode pragma improves concurrent read throughput
 (source: `docs/sqlite-wal.md`)." After answering: run
-`/kb observe finding ...`, then `/kb cite SOURCE_ID [...]` right away —
+`/kb observation add --project NAME finding "..." --source-doi DOI`, so the observation carries its source —
 don't defer citation, the observation-to-evidence link degrades fast.
 
 ## Key conventions

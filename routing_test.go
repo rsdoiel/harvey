@@ -375,14 +375,8 @@ func TestKindSupportsTools(t *testing.T) {
 		kind RouteKind
 		want bool
 	}{
-		{KindAnthropic, true},
-		{KindDeepSeek, true},
-		{KindGemini, true},
-		{KindMistral, true},
-		{KindOpenAI, true},
+		{RouteKind("anthropic"), false}, // removed, DR-0042
 		{KindOllama, true},
-		{KindLlamafile, true},
-		{KindLlamaCpp, true},
 		{RouteKind("unknown"), false},
 		{RouteKind(""), false},
 	}

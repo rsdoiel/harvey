@@ -57,10 +57,8 @@ This what I did for steps 3 and 4.
 harvey
 # Let's use the ibm/granite4.1:3b model
 /model use ibm/granite4.1:3b
-# Now let's setup our RAG
-/rag setup
-# Now ingest our content (this will take a while)
-/rag ingest TrainingMaterials/DenoDocs
+# Ingest our content as documents with kb (this will take a while)
+/kb document ingest TrainingMaterials/DenoDocs
 # Now you're ready to play, here's an example prompt
 Show me the source code for a Hello World program for Deno+TypeScript. The program should say "Hi there!", then prompt for the username's name, then say "Hi <username>, glad to meet you!".
 # After a wait if all worked well you should see a TypeScript example

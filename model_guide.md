@@ -187,7 +187,7 @@ model_aliases:
   # Code only (no tools needed)
   code-light: stable-code:3b
 
-  # Embedding (for /rag setup)
+  # Embedding
   embed:      bge-m3:latest
   embed-fast: nomic-embed-text:latest
 ```
@@ -204,8 +204,8 @@ Before starting, ask:
    or `granite3-moe:3b` (short context) for reliable tool dispatch.
 4. **How much context?** If `/read-dir` loads a full package, pick a 131K+ model.
    Tier 2 models below 32K will truncate silently.
-5. **Is RAG useful?** If the task involves an API the model doesn't know well,
-   run `/rag on` before asking.
+5. **Does it need documents?** If the task involves an API the model doesn't know well,
+   ingest the docs with `kb document ingest` and use `/kb search`.
 
 ### Typical session setup
 
@@ -219,10 +219,7 @@ harvey
 /model use docs               # → ministral-3:latest (long documents)
 /model use fast               # → cogito:3b (quick Q&A)
 
-# 3. Enable RAG if needed
-/rag on
-
-# 4. Load context
+# 3. Load context
 /read harvey/commands.go
 /read-dir harvey/ --depth 1
 

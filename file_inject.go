@@ -224,7 +224,7 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer,
 		}
 		client := a.Client
 		model := a.Client.Name()
-		if ac, ok := a.Client.(*AnyLLMClient); ok {
+		if ac, ok := a.Client.(*OllamaChatClient); ok {
 			model = ac.ModelName()
 		}
 		var restore func()
@@ -258,7 +258,7 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer,
 			DocType:     docType,
 			Config:      a.Config.Chunking,
 		}
-		synthesis, synthErr := RunChunkedAnalysis(ctx, client, a.Recorder, params, out)
+		synthesis, synthErr := RunChunkedAnalysis(ctx, client, params, out)
 		if restore != nil {
 			restore()
 		}
@@ -329,7 +329,7 @@ func looksLikeCantReadFile(response string) bool {
 }
 
 /** modelToolMode returns the explicit ToolMode for the active model from the
- * model cache, or ToolModeAuto when no entry exists or no AnyLLMClient is active.
+ * model cache, or ToolModeAuto when no entry exists or no OllamaChatClient is active.
  *
  * Returns:
  *   string — one of the ToolMode* constants; ToolModeAuto ("") when unknown.
@@ -341,7 +341,7 @@ func (a *Agent) modelToolMode() string {
 	if a.ModelCache == nil {
 		return ToolModeAuto
 	}
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok {
 		return ToolModeAuto
 	}
@@ -377,6 +377,12 @@ func (a *Agent) toolsReliable() bool {
 	if !a.Config.ToolsEnabled || a.Tools == nil {
 		return false
 	}
+	// A model on its engine's opt-in list (DR-0050) is reliable unless the user
+	// set a mode other than structured.
+	if nativeToolModel(a.activeEngine(), a.activeModelName()) {
+		mode := a.modelToolMode()
+		return mode == ToolModeAuto || mode == ToolModeStructured
+	}
 	// An engine that cannot take tools is not told otherwise by a cache row or a mode.
 	if a.activeEngineLacksTools() {
 		return false
@@ -388,7 +394,7 @@ func (a *Agent) toolsReliable() bool {
 	if a.ModelCache == nil {
 		return false
 	}
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok {
 		return false
 	}

@@ -10,16 +10,15 @@ See [man page](harvey.1.md)
 How it starts:
 
 Harvey looks for HARVEY.md in the workspace root and uses it as a system
-prompt. It then connects to a local language model system — either a llamafile
-executable or an Ollama server — and opens an interactive natural language
+prompt. It then connects to a local language model system — an Ollama or
+hailo-ollama server — and opens an interactive natural language
 programming session. Language model systems are commonly called "AI models"
 or "AI"; Harvey treats them as a programmable interface for deliberate,
 documented work.
 
-> **Tip:** The easiest way to get started is to download a llamafile from the
-> [Mozilla AI pre-built llamafiles page](https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles),
-> place it in `~/Models/`, and run `harvey`. Harvey will find and connect to
-> it automatically. Ollama and llama.cpp servers are also supported. Use
+> **Tip:** The easiest way to get started is to install [Ollama](https://ollama.com),
+> run `ollama pull qwen2.5-coder:7b`, and run `harvey`. Harvey will find and
+> connect to the server automatically. Use
 > `/model list` to see every model Harvey can reach and `/model use NAME` to
 > switch; see [Model Commands](harvey-model.7.md).
 
@@ -40,11 +39,8 @@ created automatically on first run. Session recordings are stored in
 # Change to project directory
 cd $HOME/myproject
 
-# Start Harvey — auto-detects llamafile or Ollama
+# Start Harvey — auto-detects Ollama or hailo-ollama
 harvey
-
-# Use a specific llamafile for this session (not persisted)
-harvey --llamafile ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
 
 # Use a specific Ollama model
 harvey --model qwen2.5-coder:7b
@@ -62,11 +58,10 @@ When Harvey starts it:
    used is pre-selected in the next step.
 5. Reads `HARVEY.md` from the workspace root, expands any
    [dynamic markers](#dynamic-markers), and injects it as the system prompt.
-6. Detects available model backends: scans `~/Models/` (or the configured
-   `llamafile.models_dir`) for registered llamafile executables and probes
-   the Ollama server. Llamafile models are offered first; Ollama models follow.
-7. Selects the model — from the resumed session, from `--llamafile` or
-   `--model` flags, or via an interactive picker.
+6. Detects available model backends: probes the Ollama server (and the
+   hailo-ollama server when one is configured).
+7. Selects the model — from the resumed session, from the
+   `--model` flag, or via an interactive picker.
 8. If no model is reachable, prints the first-run guide with download
    instructions and exits.
 9. Begins recording the session to a new `.spmd` file in `agents/sessions/`.
@@ -132,10 +127,10 @@ $ harvey
 ✓ Knowledge base: agents/knowledge.db
 ✓ Loaded HARVEY.md as system prompt
 
-  Starting qwen-coding (llamafile)...
-  ✓ Ready at http://localhost:8080
+  ✓ Ollama is running
+  Using model: qwen2.5-coder:7b
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Connected: llamafile (qwen-coding)
+  Connected: ollama (qwen2.5-coder:7b)
   /help for commands · /exit to quit
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -234,7 +229,7 @@ them once and you can predict subcommands for any command family.
 
 The key distinction: **`add`** registers something you already have (a route
 URL, a model alias); **`new`** creates something Harvey manages from scratch
-(a RAG database, a skill bundle, a plan). Both verbs are distinct from `use`,
+(a skill bundle, a plan). Both verbs are distinct from `use`,
 which activates something already registered.
 
 For backend services (`/model`, `/route`), `status` checks whether the
@@ -244,14 +239,11 @@ content.
 **Examples across command families:**
 
 ```
-/model list                              — models across llamafile, llama.cpp, Ollama
+/model list                              — models across Ollama and hailo-ollama
 /model use qwen-coding                   — activate one (name, alias, or unique prefix)
 /model show qwen-coding                  — show model details
 /model alias add qc qwen2.5-coder:7b     — define a short alias
 
-/rag new my-docs                         — create a new RAG database
-/rag use my-docs                         — activate it
-/rag remove my-docs                      — delete it
 
 /session list                            — show all recorded sessions
 /session show session.spmd               — show metadata for one session
@@ -274,21 +266,23 @@ list is in [harvey(1)](harvey.1.md).
 |---|---|
 | `/help` | List all available slash commands |
 | `/status` | Show backend, history length, workspace, KB state, and recording status |
-| `/hint` | Show suggestions for improving results (RAG, memory, KB) |
+| `/hint` | Show suggestions for improving results (memory, KB) |
 | `/clear` | Reset conversation history (system prompt and pinned context are kept) |
 | `/summarize` `/compact` | Ask the model to summarize the history and replace it with the summary |
-| `/context <show\|add TEXT...\|clear>` | Manage pinned context that survives `/clear` |
+| `/context` | Show what the model sees on the next turn |
+| `/pin <EVENT_ID\|kb:TYPE:ID\|--text TEXT...>` | Keep something in front of the model for this session |
+| `/pins`, `/unpin N` | List the pins; remove one |
 | `/exit` `/quit` `/bye` | End the session |
 
 ### Models and routing
 
 | Command | Description |
 |---|---|
-| `/model list` | List models across llamafile, llama.cpp, and Ollama |
+| `/model list` | List models across Ollama and hailo-ollama |
 | `/model use [NAME]` | Switch to a model by name, alias, or unique prefix; a picker is shown when NAME is omitted |
 | `/model show [NAME]` | Show the active (or named) model's details |
 | `/model status` | Check whether the active backend is reachable |
-| `/model stop` | Stop the active llamafile or llama.cpp server, if Harvey started it |
+| `/model stop` | Stop the active model server, if Harvey started it |
 | `/model clean` | Remove aliases whose model is no longer installed |
 | `/model mode [MODEL] [MODE]` | Show or set how a model gets tools: `structured`, `prose`, `inject`, or `none` |
 | `/model alias add ALIAS FULLNAME` | Define a short alias for a long model name (`alias list` shows them) |
@@ -330,9 +324,7 @@ See [Model Commands](harvey-model.7.md) and [Routing](harvey-routing.7.md).
 |---|---|
 | `/memory <mine\|list\|show\|flag\|forget\|status\|recall\|profile>` | Mine sessions for memories and manage the memory store |
 | `/recall QUERY` | Alias for `/memory recall` |
-| `/profile <list\|show\|edit\|use\|rename\|on\|off>` | Alias for `/memory profile` |
 | `/kb ...` | The knowledge base; see [Knowledge base commands](#knowledge-base-commands) |
-| `/rag <list\|new\|use\|show\|remove\|drop\|ingest\|status\|query\|on\|off>` | Named RAG knowledge stores |
 | `/skill <list\|load\|show\|info\|status\|new\|run\|suggest>` | List, load, create, and run Agent Skills |
 | `/skill-set <list\|load\|show\|info\|new\|create\|status\|unload>` | Load named bundles of skills |
 | `/workspace <init [FROM_PATH]\|status>` | Workspace settings; `init` copies aliases from another workspace |
@@ -341,7 +333,6 @@ See [Model Commands](harvey-model.7.md) and [Routing](harvey-routing.7.md).
 
 | Command | Description |
 |---|---|
-| `/record <start [FILE]\|stop\|status>` | Record the session to a Fountain file |
 | `/rename NAME` | Rename the active recording |
 | `/session <list\|show\|use\|continue\|replay>` | List, inspect, load, or replay recordings |
 | `/resume [FILE]` | Alias for `/session use` |
@@ -484,7 +475,7 @@ capacity at a glance.
 
 ### API key filtering
 
-Cloud provider API keys (`ANTHROPIC_API_KEY`, `COHERE_API_KEY`,
+Common API keys (`ANTHROPIC_API_KEY`, `COHERE_API_KEY`,
 `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`,
 `MISTRAL_API_KEY`, `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`) are stripped from
 the environment of every child process started by `!` or `/run`. They are
@@ -499,9 +490,6 @@ live in `agents/harvey.yaml`:
 ```yaml
 run_timeout: "5m"             # timeout for ! and /run commands
 ollama_timeout: ""            # empty = no timeout (recommended on a Pi)
-
-llamafile:
-  startup_timeout: 120s       # how long to wait for llamafile server ready
 ```
 
 ## Code assistance
@@ -579,31 +567,38 @@ harvey > /summarize
 The summary is stored as a `[Conversation summary]` user message. The system
 prompt and any pinned context are preserved.
 
-### `/context add|show|clear`
+### `/pin`, `/pins`, `/unpin` and `/context`
 
-Manages *pinned context* — text that is automatically re-injected into the
-conversation history after every `/clear` or `/summarize`, keeping persistent
-facts in front of the model throughout the session.
+A *pin* keeps something in front of the model for the rest of the session,
+however long the conversation gets and across `/clear` and `/summarize`. A pin
+can be text you type, an event of the session log, or a knowledge-base row.
 
 ```
-harvey > /context add Target platform: macOS arm64. Prefer stdlib over third-party.
-  Pinned context updated (57 chars).
+harvey > /pin --text Target platform: macOS arm64. Prefer stdlib over third-party.
+✓ Pinned text, ~21 tokens (1%). The pins keep to 25% of the prompt limit; /pins lists them.
 
-harvey > /context add The project uses semantic versioning via codemeta.json.
-  Pinned context updated (106 chars).
+harvey > /pin kb:record:harvey/DR-0048
+✓ Pinned kb:record:harvey/DR-0048, ~310 tokens (9%). ...
 
-harvey > /context show
-  Pinned context (106 chars):
+harvey > /pins
+  1  text                         ~21 tokens (1%)  Target platform: macOS arm64. Prefer stdlib over...
+  2  kb:record:harvey/DR-0048     ~310 tokens (9%)  harvey/DR-0048 accepted ...
+  total ~331 tokens (10%) of the 850 the pins may take
 
-  Target platform: macOS arm64. Prefer stdlib over third-party.
-  The project uses semantic versioning via codemeta.json.
+harvey > /unpin 2
+✓ Unpinned kb:record:harvey/DR-0048.
 
-harvey > /context clear
-  Pinned context cleared.
+harvey > /context
+  What the model sees on the next turn (limit ~3400 tokens, from window):
+    system prompt            1 item(s)  ~212 tokens (6%)
+    pinned                   1 item(s)  ~21 tokens (0%)
+    ...
 ```
 
-Multiple `/context add` calls append to the existing pinned context, separated
-by newlines. To replace it entirely, `/context clear` then `/context add`.
+Pins belong to the session (a new session starts with none) and may take a
+quarter of the prompt limit; a pin over that is refused and the existing pins
+are listed by cost. `/context` shows what the next prompt is made of. The old
+`/context add|show|clear` were removed: use `/pin --text`, `/pins`, `/unpin`.
 
 ## Knowledge base commands
 
@@ -613,13 +608,9 @@ sessions.
 
 | Command | Description |
 |---|---|
-| `/kb status` | Show all projects with recent observations |
-| `/kb search TERM...` | Full-text search (quote phrases, `*` for a prefix) |
+| `/kb VERB ...` | Run the installed `kb` on the workspace knowledge base, for example `/kb search TERM`, `/kb stats`, `/kb project list`, `/kb observation add --project NAME KIND TEXT` (see `kb help`) |
 | `/kb inject [PROJECT]` | Add the current (or named) project's knowledge to the conversation context |
-| `/kb project list` | List projects with ID and status |
-| `/kb project add NAME [DESC]` | Create a project and set it as current |
-| `/kb project use ID` | Set the active project by ID |
-| `/kb observe [KIND] TEXT` | Record an observation against the active project |
+| `/kb project use ID` | Set harvey's current project by ID (used by `/kb inject` and `/kb learn`) |
 | `/kb show OBS_ID` | Show one observation in full |
 | `/kb concept list` | List all concepts |
 | `/kb concept add NAME [DESC]` | Add a named concept |
@@ -654,28 +645,19 @@ Harvey can record sessions to [Fountain](https://fountain.io) screenplay files.
 Fountain recordings capture every exchange in a structured, human-readable
 format that Harvey can replay or resume later.
 
-### Starting a recording
+### Recording is always on
 
-| Command | Description |
-|---|---|
-| `/record start [FILE]` | Begin recording; FILE defaults to a timestamped path in the workspace |
-| `/record stop` | Close the recording file |
-| `/record status` | Show the current recording path or "not recording" |
-
-```
-harvey > /record start
-Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.spmd
-
-harvey > /record stop
-Recording stopped. Session saved to harvey-session-20260415-142300.spmd
-```
-
-You can also start recording automatically at launch:
+There is no command to start or stop a recording. Harvey logs every session to
+`agents/sessions/NAME.jsonl` and renders the Fountain `.spmd` file from the log
+when the session ends. To choose the session's name, or turn the automatic
+naming off, use the command-line flags:
 
 ```bash
 harvey --record                          # auto-named timestamped file
 harvey --record-file mysession.spmd  # explicit path
 ```
+
+`/rename NAME` renames the running session.
 
 ### Resuming or replaying a Fountain file
 
@@ -760,8 +742,8 @@ harvey > /write .git/COMMIT_EDITMSG
 ### Keep context focused on a long refactor
 
 ```
-harvey > /context add We are migrating from the old auth middleware to the new JWT-based one.
-harvey > /context add All session tokens must be stored as httpOnly cookies, not localStorage.
+harvey > /pin --text We are migrating from the old auth middleware to the new JWT-based one.
+harvey > /pin --text All session tokens must be stored as httpOnly cookies, not localStorage.
 harvey > /read internal/auth/middleware.go
 harvey > ...several turns of back and forth...
 harvey > /summarize

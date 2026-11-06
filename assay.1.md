@@ -13,28 +13,45 @@ assay [OPTIONS]
 # DESCRIPTION
 
 assay is an LLM evaluation harness for Harvey. It runs a corpus of prompts
-against one or more Ollama models (or a llamafile binary) and produces a
+against one or more models on Ollama and hailo-ollama and produces a
 Markdown report plus a JSON results file for human review and automated
 checking.
 
 The prompt corpus is defined in a YAML file (default:
-agents/assay/corpus.yaml). Each entry specifies a category, a prompt,
-automated checks (contains, not_contains, compiles, go_vet), and
-human-review questions. assay sends each prompt to each model, records
+agents/assay/corpus.yaml). Each entry specifies a category (the capability
+it tests, such as go, sql or tool-call), a prompt, an optional tokens: size
+hint (the prompt's approximate size, for probes that test a model's window),
+automated checks (contains, not_contains, compiles, go_vet, and the profile
+checks below), and human-review questions. An unknown key, a duplicate or empty id, or a
+negative tokens: is an error (a misspelt check would otherwise never run). assay sends each prompt to each model, records
 the response, runs all automated checks, and writes a summary table plus
 per-prompt results to the output directory.
 
-When a RAG store is provided via -rag-db, assay embeds each prompt and
-injects the top-k retrieved chunks as context before calling the model.
-With -rag-compare, every prompt is run twice (once without RAG, once with)
-and a per-check delta table is appended to the report.
+The profile checks probe what separates models on this hardware. tool_call
+({name, arg, contains}) offers the model Harvey's read-only tools (read_file,
+list_files, search_files) and passes when it calls the right one with the right
+argument, as a structured call or as the JSON block Harvey reads from prose;
+no_tool passes when the model makes no call at all. A call written as bare JSON
+text in the reply is not run by Harvey, so it fails tool_call (the report says the
+model wrote it as plain text) and fails no_tool. A model that cannot take
+tools fails the check and the run goes on. uses_tail MARKER pads the prompt with
+neutral filler to its tokens: size (Qwen-family tokens, about 3.3 characters each
+for this filler; llama3.2 counts about 10% fewer) and puts the instruction, which must contain
+MARKER, last; it passes when the reply carries MARKER, so a model that drops what
+is past its window fails (the report says the reply "did not reflect" the marker,
+which is not proof the model never read it). exact REGEXP passes when the whole
+trimmed reply matches. The tool probes send no Harvey system prompt, so they are stricter than a
+session. A uses_tail prompt the server cannot take at all (an HTTP error or a
+stream that stops early, as hailo does past its window) fails that check naming
+the prompt's size; it does not fail the run. A refused connection still does.
+A failing check is a result, never an error.
 
 With -guide-compare and -guide-file, every prompt is run twice (once with
 no system message, once with the guide file's content as a system message)
 and a per-check delta table is appended to the report — useful for testing
 whether an always-on guide (a HARVEY.md section, a skill's prose) still
 changes model behavior once a computational sensor exists for the same
-failure mode. Mutually exclusive with -rag-compare.
+failure mode.
 
 # OPTIONS
 
@@ -43,49 +60,45 @@ failure mode. Mutually exclusive with -rag-compare.
   Default: agents/assay/corpus.yaml
 
 -models MODEL[,MODEL...]
-: Comma-separated list of Ollama model names to evaluate.
-  Default: all models currently available on the Ollama server.
+: Comma-separated list of models to evaluate, each as service/model:
+  ollama/qwen2.5-coder:1.5b or hailo/llama3.2:3b. A name with no service
+  is looked up on both servers: on one it runs there, on both it is a usage
+  error that names the two choices, on neither it is sent to Ollama.
+  Default: every model on each server that answers (a server that does not
+  answer is skipped with a note on stderr).
 
--category NAME
-: Run only prompts in the named category. Omit to run all categories.
-
--llamafile PATH
-: Path to a llamafile binary to evaluate. assay starts the llamafile
-  server automatically before the run and stops it when finished.
-  The model name is derived from the binary filename.
-  Mutually exclusive with -llamacpp.
-
--llamacpp URL
-: Base URL of a running llama-server instance, e.g. http://localhost:8081.
-  The user is responsible for starting and stopping llama-server.
-  If -models is not set, assay queries GET /v1/models to discover
-  the loaded model. Mutually exclusive with -llamafile.
+-category NAME[,NAME...]
+: Run only prompts in the named categories (capabilities). Omit to run all
+  categories. A name the corpus does not have is an error (exit 1) that lists
+  the categories it does have, even when other names match.
 
 -ollama URL
-: Base URL of the Ollama server (also used for RAG embeddings when
-  -rag-db is set with --llamafile or --llamacpp).
+: Base URL of the Ollama server.
   Default: http://localhost:11434
+
+-hailo URL
+: Base URL of the hailo-ollama server.
+  Default: http://localhost:8000
+
+-warmup
+: Send one short unrecorded request to each model before its prompts, so the
+  profile shows warm timings and the cold start (the first call after a model
+  is loaded can take 20 seconds or more) is reported once, per model.
+  On by default; -warmup=false skips it. A warm-up that fails is a note on
+  stderr, not a failure of the run.
+
+-runs N
+: Run each prompt N times (default 1). The profile reports pass/trials, so
+  more runs make a row less thin.
+
+-timeout SECONDS
+: How long to wait for one model call (default 120). A call that takes
+  longer fails as a service that could not do the work (exit 69).
 
 -output PATH
 : Directory to write the report (report.md) and results (results.json).
   Default: $WORKSPACE/assay-results/assay-TIMESTAMP/ if run inside a
   Harvey workspace, or assay-results/assay-TIMESTAMP/ otherwise.
-
--rag-db PATH
-: Path to a Harvey RAG store (SQLite). When set, assay embeds each
-  prompt and prepends retrieved context chunks before calling the model.
-
--rag-top-k N
-: Number of RAG chunks to retrieve per prompt when -rag-db is set.
-  Default: 3
-
--rag-embed-model MODEL
-: Ollama embedding model used to embed prompts for RAG retrieval.
-  Default: nomic-embed-text
-
--rag-compare
-: Run each prompt twice — once without RAG context and once with — and
-  append a per-check delta table to the report. Requires -rag-db.
 
 -guide-file PATH
 : Path to a plain text file whose content becomes a system message sent
@@ -96,7 +109,7 @@ failure mode. Mutually exclusive with -rag-compare.
 : Run each prompt twice — once with no system message (identical to
   assay's default dispatch) and once with -guide-file's content sent
   as a system message — and append a per-check delta table to the report.
-  Requires -guide-file. Mutually exclusive with -rag-compare.
+  Requires -guide-file.
 
 -h, -help, --help
 : Display this help message.
@@ -119,23 +132,25 @@ thing that failed, using the workspace's exit codes:
   failures, and exit 0.
 
 1
-: Nothing to run: no prompts match -category, or the server has no models.
+: Nothing to run: no prompts match -category, or no server has models.
 
 2
 : The command line is wrong: an unknown option, an option without its value, a
-  surplus argument, or options that conflict (-rag-compare without -rag-db,
-  -guide-compare without -guide-file, -llamafile with -llamacpp).
+  surplus argument, a model name that is on both servers, -runs below 1,
+  -timeout of 0 or less, or options that conflict (-guide-compare without
+  -guide-file).
 
 65
 : A file assay read is wrong: a corpus that will not parse or has no
-  prompts, or a RAG store it cannot use.
+  prompts.
 
 66
-: A named input is missing: the -corpus, -guide-file or -llamafile file.
+: A named input is missing: the -corpus or -guide-file file.
 
 69
-: A service cannot be reached: Ollama or llama-server while listing models, a
-  llamafile that will not start, or a model call that failed. The run still
+: A service cannot be reached: neither Ollama nor hailo-ollama answered while
+  listing models, a service named in -models is down, or a model call
+  that failed. The run still
   finishes, writes its report, and says how many calls failed.
 
 70
@@ -145,7 +160,7 @@ thing that failed, using the workspace's exit codes:
 : The output directory cannot be created.
 
 74
-: report.md or results.json could not be written. The other is still tried.
+: report.md, results.json or summary.json could not be written. The others are still tried.
 
 77
 : The operating system refused access to a file or directory.
@@ -156,7 +171,8 @@ table above.
 
 # OUTPUT
 
-assay writes two files to the output directory:
+assay writes three files to the output directory, and prints the profile at
+the end of the run:
 
 report.md
 : Markdown report containing a summary table (model x prompts x
@@ -165,7 +181,37 @@ report.md
 
 results.json
 : Machine-readable JSON array of all prompt results, including the full
-  model response, individual check outcomes, and timing data.
+  model response, individual check outcomes, and timing data (time to first
+  token and the decode rate after it).
+
+summary.json
+: The profile and the hints for scripts and kb (with the rule table): for each model its cold start and warm
+  median timings, and for each model and capability the trials passed, the
+  trials run, the failed calls, and the median timings. report.md carries the
+  same table under "Profile". A failed call is not a trial; it is counted
+  apart so that a timeout does not read as a model that cannot do the task.
+
+# HINTS
+
+At the end of a run assay prints hints, advice on what to route to Ollama and
+what to hailo-ollama, and report.md lists them with the rules that made them.
+A hint is advice from one run, never a change to harvey.yaml. Each is built
+from the profile, so it is only as good as the corpus and the number of trials
+behind it; a hint with fewer than 3 trials ends with (thin: n trials), and
+-runs 3 or more removes that.
+
+A target is reliable on a capability at a pass rate of 0.8 or more and weak
+below 0.5. If no target is reliable the hint is neither, naming the best. If
+reliable targets are on one engine only, the hint names that engine and the
+other's best. If both are reliable the hint is either, unless one engine's
+first token is 1.5 times and at least a second quicker, then that engine. For long-prompt a
+target "reads up to" the largest probe size at which any trial reflected the
+marker, with every smaller size also read, and the hint says what happened at
+the next size, a server error or a lost marker. A size where only some trials
+passed is marked flaky: loss past the window fails every trial, so a mixed
+result is sampling noise. For tool-call a target is tool-ready when it passes 0.8 of the
+tool_call probes and every no_tool control, and the hint says which part
+failed. A cold start over 10 seconds says to keep the model loaded.
 
 # EXAMPLES
 
@@ -181,16 +227,10 @@ Run only the go-crosswalk category against a specific model:
   assay -models qwen2.5-coder:7b -category go-crosswalk
 ~~~
 
-Evaluate a llamafile binary:
+Compare a run with and without a guide file as the system message:
 
 ~~~
-  assay -llamafile ~/models/qwen2.5-coder-7b.llamafile
-~~~
-
-Run with RAG context injection and comparison:
-
-~~~
-  assay -models llama3.1:8b -rag-db agents/rag/harvey.db -rag-compare
+  assay -models llama3.1:8b -guide-file HARVEY.md -guide-compare
 ~~~
 
 Write results to a custom directory:

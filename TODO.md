@@ -1,6 +1,61 @@
 
 ## Bugs
 
+- [x] **DONE 2026-11-05: no code defect; the assay binary was stale.** `bin/assay` (built 2026-10-20, before workspace DR-0033) still printed `-llamafile`/`-llamacpp`; `cmd/assay` was already Ollama-only. Rebuilt with `make`; the llamafile/llamacpp design and plan docs moved to `agents/projects/harvey/archive/`. Hailo support is the Action Item below (DR-0051).
+
+> Entries below that mention llamafile or llama.cpp (their code, tests and `backend_*` files) are history: both backends were
+> removed (workspace DR-0033), and the files and tests they name no longer exist.
+
+- [x] **DONE 2026-11-04: hailo prompt budget never exceeds the window.** `promptTokenLimit` clamps a stored or learned limit to the engine's window share (`engineWindowCeiling`, 1,740 tokens on hailo, less the tool definitions sent to a qwen3 opt-in model); `assembleLimit`'s window branch does the same. A limit learned from a retry after an HTTP 500 (far past the window) used to win. The drafter already budgeted to the window (`DraftBudget`, 2,048 less 700). Tests `hailo_prompt_ceiling_test.go`. Silent loss was checked on the other models (`notes/hailo-ollama-api.md`, question 5): all three qwen2/qwen2.5/llama3.2 lose it, llama3.2:1b earliest (borderline at 85%); qwen3 gives HTTP 500. Open: a tighter share for `llama3.2:1b`; `deepseek_r1` not run.
+
+- [x] **DONE 2026-11-04: hailo structured tool calls, opt-in per model (workspace-tier harvey DR-0050).** `qwen3:1.7b` only, sent the read-only subset `read_file`, `list_files`, `search_files` (`EngineCaps.NativeToolModels`/`NativeToolNames`, `nativeToolModel`, `nativeToolSubset` in `engine_caps.go`; name and argument keys trimmed, an unoffered name is no call, in `ollama_chat.go`; `toolsReliable` in `file_inject.go`); tests `hailo_native_tools_test.go`; checked end to end on the card. Open: where the window gives out beyond the 3-tool subset (write_file, run_command are not sent); a repeat probe of qwen3's search_files choice; `-race`.
+
+- [ ] **An ambiguous model name at startup: the unattended exit code, the message, and the answer not being remembered.**
+  Found 2026-11-02 in D7 (`llama3.2:3b` is installed on both servers of this Pi); first written up wrongly as a defect, corrected
+  the same day after testing at a terminal. What DR-0030 item 6 says is what happens: at a terminal harvey asks ("`llama3.2:3b` is on
+  more than one engine: [1] ollama/llama3.2:3b [2] hailo/llama3.2:3b") and unattended it exits **2**, as does `/model use` with the
+  bare name in a piped session. What is left, small: (a) DR-0003 (workspace) would class a value read from `harvey.yaml` as 78
+  (config), DR-0030 (harvey, 2026-10-07) chose 2, so decide which governs; (b) the unattended message names no source, so a person
+  who set nothing on the command line has to guess it is `ollama.model` in `agents/harvey.yaml`; (c) the answer at the terminal is not
+  remembered, so someone who always wants the CPU model is asked at every start, and the prompt could say that writing
+  `ollama/llama3.2:3b` in `harvey.yaml` stops the question. Reproduce (a) and (b) with that yaml and `echo /exit | harvey`.
+- [x] **FIXED 2026-11-03 (uncommitted).** Startup now checks `-m` / `ollama.model` against `/api/tags` of the engine it names (`requireInstalled`, `model_name.go`): unattended it exits 66 (no_input) naming the model and what is installed; at a terminal it says so and offers the picker; a server that cannot be asked, or a named engine that is down (still 69), is unchanged. `/model use` already answered "not found". Tests: `startup_model_missing_test.go`. Checked on harvey.local against hailo-ollama 5.4.0 (`hailo/llama3.2:3b`, gone since the upgrade, exits 66). Original report: **Harvey says "Connected" for a model that is not installed.** Found 2026-11-01 (a mistyped `qwen2.5:rb`) and again in the
+  hand-off of that day: startup prints `Connected: qwen2.5:rb` and only the first prompt fails (HTTP 404). Check at startup, and at
+  `/model use`, that the chosen model exists on the server (`/api/tags`; hailo-ollama answers it too), and say so plainly if not.
+  Reproduce through the real startup with a name the server does not list; expect a message naming the model and the models that are
+  installed, not "Connected". Mind the exit code for a non-interactive session (DR-0003: no such model is 66 or 69, decide which).
+- [x] **FIXED 2026-11-03 (uncommitted).** `OllamaChatClient.Name()` now follows the client's engine, so `session_start`, `model_request`, the `/kb draft` header and the banner agree for a hailo client; the `/kb draft @NAME` restore and pipeline `@mention` clients keep the engine (the restore used to rebuild an Ollama client at `ollama.url`). Tests: `engine_label_test.go`. Not done: `model_request.engine` as its own field (the label is still "engine (model)" parsed by `backendFromClientName`), and a `status`-line check. Original report: **The startup banner and the drafting header call a hailo-ollama model "ollama".** Found 2026-11-02 in D7. With
+  `ollama.model: hailo/llama3.2:3b` in `harvey.yaml` the banner says `Connected: llama3.2:3b (hailo)` while the session log says
+  `backend: "ollama"` in `session_start`, and the request is built for the Ollama backend; only `/model use hailo/...` logs a
+  `model_switch` to `hailo`. Separately, `/kb draft` prints `with ollama (llama3.2:3b)` and the log labels the request `ollama` for
+  a hailo-ollama client, because the label comes from `Name()` ("Ollama (MODEL)") and backend names are derived from it
+  (`backendFromClientName`). Which server answered is therefore not readable from the log. Decide whether the label should carry the
+  engine; at the least the banner and `session_start` must agree.
+- [~] **PARTLY DONE 2026-11-03 (uncommitted): display built on DR-0049 item 6** (`service_display.go`, tests `service_display_test.go`): `Connected`, `/status`, `/model`, `/model list`, the picker and the `/kb draft` header show the bare model with one service and `service/model` with two (the form `/model use` and `-m` accept; the old `model (hailo)` could not be typed back). Log fields done the same day (`service`, `engine`, with `backend` kept; `modelRefOf` in `sessionlog_agent.go`; test `TestLogFields_ServiceAndEngineOnEveryModelRecord`). **2026-11-04 (uncommitted until the commit that follows this edit): `services:` built** — read and checked in `services_config.go` (exit 78 for a reserved, slashed, duplicate or unusable entry); `ModelSummary.Service` beside `Engine`; `listFamilyModels` lists configured services; `a.parseModelRef`, `matchModel` and `requireInstalled` take `service/model`; `setServiceModel` selects a model on a configured service (`-m`, `/model use`, picker, an alias whose `engine` is a service name; down = exit 69, no fallback); `serviceCount()` counts them and the display names the service, not the kind; capability rows are keyed `service/model`. **2026-11-04 (later): `draft.model` checked at start-up** (a warning, not a stop: `checkDraftModel`), and `service/model` now really resolves for `/kb draft` (it reached only aliases before; `resolveDispatchTarget`), restoring the service and backend afterwards. **2026-11-05: the cache-key migration needs no code** (the default services are named after their engines, so `modelKey` already gives old rows their keys; a configured service's name cannot be `ollama`, `hailo` or contain a slash, so `service/model` cannot collide with an old row; pinned by `model_cache_legacy_keys_test.go`; DR-0049 item 8 is met without a migration). Still to do from DR-0049: pulling a Hailo model over the network onto a configured service; the `/kb draft @NAME` restore resetting `a.Backend`; `services:` as the home of the per-service window and prompt limits. Original entry: **Two model services on one machine: carry the engine through every model call, and show it only when there is a choice.**
+  **Waits for workspace-tier harvey DR-0049 (`proposed`, 2026-11-03):** a model lives on a named service (`service/model`), the display test becomes "more than one service", and the log carries `service` and `engine`. Build on that record, not on the engine-only wording below.
+  Raised 2026-11-02 (author's question: Ollama on the CPU beside hailo-ollama for the AI HAT+ 2, common with an accelerator,
+  absent on CPU-only machines). Today the engine is a label on the model (`engine/model`, DR-0030) and detection adds options without
+  overriding a choice; the label is lost on the way to the log, the banner and the draft header (the entry above). (1) Record the
+  engine on every model call in its own field (session log `session_start`, `model_switch`, `BeginModelCall`, the `/kb draft` header,
+  the status line) from one source, not by parsing `Name()`; a test fails if two of them disagree for a hailo client. (2) Show the
+  engine only when more than one is configured or detected: with one, the display stays as it is and a CPU-only user never sees the
+  word "ollama"; with two, `Connected`, `/status` and `/model list` always name it. Test both: a CPU-only workspace (no `hailo.url`,
+  no `/dev/hailo0`) prints no engine word, a workspace with both always does. Related: the ambiguous-name entry (answer not
+  remembered) and the next entry. Choosing an engine by job is the next entry.
+- [x] **BUILT 2026-11-03 (uncommitted): `draft.model`** (`draft: {model:}` in harvey.yaml, `Config.Draft.Model`; `/kb draft` takes `@NAME`, else `draft.model`, else the session model; a down service is 69 with no fallback). Tests: `draft_model_setting_test.go` (precedence, unset, service down, yaml), checked by breaking the precedence on purpose. Docs: `CONFIGURATION.md`. Not done: `learn_model` (`/kb learn draft`) is separate and unchanged; the value is not validated at startup. Original entry: **Choose the engine by job: a `draft.model` setting (design in progress, 2026-11-02).** Decided with the author so far: the
+  choice is per job, not one session default; the jobs with their own setting are chat (`ollama.model`, exists) and drafting
+  (`draft.model`, new); embeddings stay Ollama-only and need none; an unset `draft.model` means the session's chat model, so nothing
+  changes for anyone who sets nothing and a CPU-only user sees no new setting (when that model is on hailo the draft header names the
+  engine). Also decided (2026-11-02): `/kb draft @NAME` beats `draft.model`; a `draft.model` naming an engine that is down stops with a
+  message and exits 69 unattended, never a silent fallback (hailo wedges if a request is abandoned); the value is `engine/model`, as
+  DR-0030. Still to decide: a new DR or an amendment to DR-0030.
+- [x] **FIXED 2026-11-03 (uncommitted).** The hailo engine row now carries `Window: 2048` (`engine_caps.go`), used as the model's own window when the probe finds none (`fixWindowLimit`), so `/kb draft` no longer says "window not known, 2048 assumed" and the log records `window.source: "model"`. The prompt limit past which the server answers HTTP 500 is higher than the window and not what the budget should use: a prompt between the two is silently not read (`notes/hailo-ollama-api.md`). Tests: `hailo_window_test.go`. Original report: **A hailo-ollama model has no known context window, so every pass is sized for 2,048 tokens.** Found 2026-11-02 in D7:
+  `window.source` is `unknown` and `/kb draft` says "window not known, 2048 assumed". hailo-ollama has no `/api/show` window and the
+  `llama3.2:3b` prompt limit is about 3,000 characters (`hailo-ollama-api.md`). The log's budget says `limit 700, limit_source
+  prompt_limit`, so the budget exists for chat but the drafter does not use it. Decide whether the drafter should take the engine's
+  prompt limit, or an explicit `hailo.context_length`, and test through a hailo-labelled client.
+
+
 - [x] **FIXED 2026-10-08** (`write_offer_input.go`, tests in
   `write_offer_input_test.go`): a line that is a command (`/exit`, `!ls`, any
   registered `/name`) given at a write offer is handed back to the REPL through
@@ -143,52 +198,37 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
-- [ ] **Scriptable one-shot mode: run one prompt, get the reply, with controls a script needs.** *Blocks building `rl`
-  with small models* (`agents/projects/rl/plans/rl-small-model-build-plan.md`): a driver script must call a chosen model
-  per task, many times, unattended, and read the reply. Reviewed 2026-10-25 against `bin/harvey` 0.0.19 with `llama3`
-  in a scratch workspace. What works: piped stdin runs slash commands and chat turns, `/read FILE` then a one-line
-  prompt then `/write PATH` produced the file, and the session exits with the class of the first failure (DR-0006).
-  What does not, each a sub-item below (test-first, review exit codes against DR-0003):
-  - [ ] **A prompt of several lines is several turns.** Piped input is read line by line; a three-line spec sent three
-    chat turns. Workaround found: put the spec in a file, `/read` it, send a one-line prompt. Wanted: a prompt given
-    whole, `harvey --prompt-file FILE` (and `--prompt TEXT`, and `-` for stdin), one turn, then exit.
-  - [ ] **Output is built for a terminal.** Stdout carries the banner, rules, spinner frames, ANSI colour, the
-    "Pobble" waiting lines and the stats line, with the reply in the middle. Wanted: the reply alone on stdout
-    (`--quiet`, or implied by one-shot mode), everything else on stderr or suppressed. With `--json`, a success
-    object (`reply`, `model`, token counts, `eval_duration`) so tokens/second can be logged; `--json` today only
-    shapes errors.
-  - [ ] **Interactive prompts read the script's input.** On a workspace with no profile the first-run profile menu
-    took the first prompt line as its answer. The write-offer prompt took `/write add1.wat` (it now hands a command
-    back, 2026-10-08, but the offer still fires and the line is consumed first). Non-terminal sessions keep write
-    offers on purpose (see the 2026-10-08 fix); one-shot mode needs them off, plus a `--no-onboarding` or "skip when
-    not a terminal" for the profile menu.
-  - [ ] **No per-run model controls.** Wanted on the command line: `--tools=off` (config `tools.enabled: false`
-    works, but only through `agents/harvey.yaml`), `--system FILE` or `--no-system`, `--temperature`, `--seed`,
-    `--num-ctx`, `--num-predict`, `--keep-alive`. I found no setting for sampling options in the Ollama request
-    (verify), and the context window was 8192 (`316/8192 ctx`), small for a prompt that carries a contract file.
-    Needed for repeatable runs and for comparing models fairly.
-  - [ ] **A one-shot run should be bare.** No recording, no auto-mining, no RAG or `kb` injection, no memory
-    onboarding, unless asked (`--bare`). Each run starts with fresh context already; keep it that way and make it a
-    stated guarantee. A run that writes `agents/sessions/*.spmd` and nags "N session(s) unmined" is noise in a loop of
-    hundreds of calls.
-  - [ ] **Write the reply to a file directly.** `--write PATH` (first fenced block, as `/write` does) so a script
-    does not need a second command that fails when the reply has no block. `/write` on no reply exits 1, but a
-    failed chat turn and a failed `/write` in one session report only the first.
-  - [ ] **BUG: tool mode `auto` sends `tools` to a model that cannot take them, and the exit class is 70.**
-    `llama3:latest` on Ollama answers `400 ... does not support tools`; harvey sent the `tools` key anyway
-    (its own probe code reads `capabilities` for this) and the failed session exited 70 (internal), where DR-0003 says
-    70 is never the answer for a known condition. Reproduce: fresh workspace, `harvey -m ollama/llama3:latest`, any
-    prompt. Expect prose mode chosen automatically, or a classed error (not 70). Check whether the cached probe
-    row in a new `model_cache.db` is why the probe did not run.
-  - [ ] **BUG: the error text recommends `/tools off`, which is not a command.** `terminal.go:1239` and `:1343` say
-    "Try /tools off"; `/tools` answers `unknown command` (exit 2). Add the command or correct the text (`/model mode
-    prose` or `tools.enabled`).
-  - [ ] **Decide where retry-until-the-test-passes lives.** Recommended: not in harvey. A driver script calls the
-    one-shot mode, runs the gate, and re-calls with the failure appended, so harvey stays a single-turn tool and the
-    gate stays outside the model. Write the decision as a record before adding any retry feature to `/plan`.
-  - [ ] **Measure before trusting the speed.** The one `llama3` call took 2m31s for a 69-token reply (reported 0.5
-    tok/s). That included loading the model cold, so it is not a throughput figure; the one-shot mode's
-    `--json` stats should make the real numbers easy to log.
+- [x] **DONE 2026-11-05: assay profiles models on Ollama and hailo-ollama and hints at a route** (harvey DR-0051, plan `agents/projects/harvey/plans/assay-profile-plan.md`, A0-A7). `service/model` targets and `--hailo`; corpus by capability with `tokens:`; checks `tool_call`/`no_tool`/`uses_tail`/`exact`; warm-up, `--runs`, `--timeout`, multi-name `--category`; the matrix, eight hint rules and `summary.json`. Profile run in `assay-results/assay-20261105-151700-profile/`, kb observation 623. Open: amend DR-0051 for four deviations (bare name stays on Ollama, progress on stdout, rules 4 and 5 refined); the Go/SQL rows (about 5 h at `--runs 3`); more than 3 runs for tool-call (the same code gave qwen3 8/12 then 4/12); an `assay report DIR` to re-derive hints from a saved `results.json`.
+
+- [x] **DONE 2026-11-02: remove the workspace profiles (scheduled for the memory-store removal release, not before).** Added 2026-11-01 at the author's
+  request. The onboarding profile choice ("Select [1-7]", Data Scientist, Technical Writer and the rest), `templates/profiles/`,
+  `templates.go`, `/profile`, and the profile text injected at session start are guesses about what a user in each role needs; they
+  confuse more than they help, and harvey should stay simple. They go with slice 4 of DR-0037, whose item 2 already drops them with
+  onboarding and the factual memory types, so this is not a new decision, only the author's reason and a reminder that the profile
+  choice also swallows the first line of piped input in a fresh workspace. They could come back as a feature if real usage data said
+  what profiles users want. Waits on a release that carries the memory-store deprecation notice (hand-off 20261031, "Next steps").
+  **Done 2026-11-02 at the author's request, ahead of slice 4:** the first-run prompt, `/profile`, `/memory profile`, the profile
+  templates, `RunOnboarding`/`NeedsOnboarding`, the profile hand-off writer and the `Profile:` status lines are removed, and a
+  leftover `workspace_profile` file is no longer injected. What still waits for slice 4 is the rest of the memory store.
+
+- [ ] **Two write-offer mechanisms fire for the same reply in an interactive session.** Found 2026-10-30 while testing the
+  Fountain rendering of write offers. For every fenced block in a reply, `runChatTurn` first asks "[Write LANG block N/M to
+  file? Path (or Enter to skip)]" (`terminal.go`, the "Code-block extraction" branch) and writes the block to whatever path is
+  typed; then `autoExecuteReply` offers each *tagged* block (` ```text:out/a.txt `) with the Write box (yes / no / all / quit).
+  A tagged block is therefore offered twice, and the first prompt shows the fence's `lang:path` label as if it were the
+  language. A scripted answer meant for the box (`y`) is taken as a path by the first prompt (it wrote a file named `y`). Not
+  changed; to decide whether the first prompt should skip blocks the second one handles. Neither prompt runs without a
+  terminal (`interactive`).
+
+- [ ] **`harvey check` and/or `harvey update` for a stale `harvey.yaml`.** Raised by the author 2026-10-30, to be done later
+  (not now). Several accepted decisions leave existing `harvey.yaml` files out of date: workspace policy DR-0043 (the
+  `safe_mode`, `allowed_commands` and `permissions:` are all ignored in favour of `policy:`), DR-0042 (routes of the removed cloud kinds, `s3://` uses), and DR-0033/DR-0035/DR-0037 (llamafile and llama.cpp
+  sections, `rag:` and `memory:` settings). A `harvey check` would report a stale file and what to change; a `harvey update`
+  would rewrite it. Undecided: one verb or both, and whether `update` writes in place or prints a diff. Constraints:
+  harvey already rewrites `harvey.yaml` whole whenever it saves memory settings or aliases (`SaveMemoryConfig`), so `update`
+  must not drop keys it does not know; exit codes per workspace DR-0003 (`check` is 0 when current, 1 when it reports
+  drift, 78 when the file is wrong); the verbs sit with `init`, `help` and `completion` in `cmd/harvey`. Needs a design
+  brief before code.
 
 - [ ] **Bump `go.mod` to `knowledge` v0.0.27** (released 2026-10-25; harvey requires v0.0.26). A bug fix release with no
   breaking API change. Two things to look at when bumping: `kb.IngestDocument` (used in `learn_ingest.go` and

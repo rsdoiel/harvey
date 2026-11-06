@@ -34,109 +34,32 @@ const (
 	sep         = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 )
 
-// isConnectionError returns true when err indicates a transport-level failure
-// consistent with the llamafile server having stopped: connection refused,
-// EOF, or reset by peer.
-func isConnectionError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "connection refused") ||
-		strings.Contains(msg, "EOF") ||
-		strings.Contains(msg, "connection reset") ||
-		strings.Contains(msg, "no route to host") ||
-		strings.Contains(msg, "unexpected end of JSON input")
-}
-
-// restartActiveLlamafile stops any Harvey-managed llamafile process and
-// starts a fresh one for the currently active entry. Returns an error when
-// there is no active entry, or when the active entry has an empty path
-// (i.e. an adopted external server that Harvey cannot restart).
-func restartActiveLlamafile(a *Agent, out io.Writer) error {
-	entry := a.Config.ActiveLlamafileEntry()
-	if entry == nil {
-		return fmt.Errorf("no active llamafile entry to restart")
-	}
-	if entry.Path == "" {
-		return fmt.Errorf("cannot restart %q: server was adopted (path unknown)", entry.Name)
-	}
-	if a.Backend != nil {
-		_ = a.Backend.Stop()
-	}
-	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-	fmt.Fprintf(out, "  Starting %s...\n", entry.Name)
-	proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
-	if err != nil {
-		return fmt.Errorf("restart failed: %w", err)
-	}
-	a.wireLlamafileBackend(proc, entry.Name)
-	fmt.Fprintln(out, green("  ✓")+" Restarted "+entry.Name)
-	return a.useLlamafileEntry(entry.Name, out)
-}
-
-// restartActiveLlamaCpp stops and restarts the llama-server for the model
-// that was active when the crash occurred, then rewires a.Client and a.Backend.
-func restartActiveLlamaCpp(a *Agent, out io.Writer) error {
-	b, ok := a.Backend.(*LlamaCppBackend)
-	if !ok || b == nil {
-		return fmt.Errorf("active backend is not llamacpp")
-	}
-	modelPath := b.ModelPath()
-	if modelPath == "" {
-		return fmt.Errorf("cannot restart: active model path unknown")
-	}
-	fmt.Fprintf(out, "  Starting llama-server for %s...\n", b.ActiveModel())
-	return startLlamaCppModelPath(a, modelPath, out)
-}
-
 /** runFirstRunWizard prints onboarding text for new users who have no backend
- * configured, then reads one line of input. An empty line returns an error
- * (no backend available). A non-empty line is treated as a llamafile path and
- * passed to cmdLlamafileAdd to register and connect the model.
+ * reachable, so they can start Ollama and pull a model.
  *
  * Parameters:
  *   a   (*Agent)   — the running Harvey agent.
- *   in  (io.Reader) — source for user input (typically a.In or a bufio.Reader).
- *   out (io.Writer) — destination for the wizard text and prompts.
+ *   in  (io.Reader) — unused; kept for call-site uniformity with selectBackend.
+ *   out (io.Writer) — destination for the wizard text.
  *
  * Returns:
- *   error — "no backend available" when the user provides no path; any error
- *           from cmdLlamafileAdd when the given path is invalid.
+ *   error — always "no backend available".
  *
  * Example:
  *   if err := runFirstRunWizard(a, reader, out); err != nil {
- *       // user pressed Enter or path was invalid
+ *       // no backend; use /model use once Ollama is running
  *   }
  */
 func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
-	// If ~/Models already has .llamafile files, show a picker instead of
-	// asking for a raw path — this is the common case for users who
-	// downloaded a llamafile but haven't registered it yet.
-	if paths := scanLlamafileModels(a.Config.Llamafile.ModelsDir); len(paths) > 0 {
-		selected, err := llamafilePickFromDir(a, out)
-		if err != nil || selected == "" {
-			return fmt.Errorf("no backend available")
-		}
-		return addAndStartLlamafile(a, selected, out)
-	}
 	fmt.Fprint(out, FirstRunWizardText)
-	fmt.Fprint(out, "Enter a llamafile path (or press Enter to exit): ")
-	line, _ := bufio.NewReader(in).ReadString('\n')
-	path := strings.TrimSpace(line)
-	if path == "" {
-		return fmt.Errorf("no backend available")
-	}
-	return addAndStartLlamafile(a, path, out)
+	return fmt.Errorf("no backend available")
 }
 
-/** attemptModelSwitch tries to switch the active model to the named backend
- * entry. It checks the llamafile registry first, then ModelAliases. Aliases
- * are dispatched by Engine: "llamacpp" → startLlamaCppModelPath, "ollama" →
- * Ollama client, "" or "llamafile" → switchLlamafileModel with Ollama fallback
- * (legacy behaviour). Returns (true, err) when the name is found regardless of
+/** attemptModelSwitch tries to switch the active model to the named alias.
+ * The name is an alias or the model an alias points at. Aliases are dispatched by Engine: "hailo" → hailo-ollama, "ollama" or ""
+ * → Ollama client. Returns (true, err) when the name is found regardless of
  * whether the switch succeeded; returns (false, nil) when the name is not
- * registered anywhere so the caller can fall through to a normal prompt.
+ * registered so the caller can fall through to a normal prompt.
  *
  * Parameters:
  *   a    (*Agent)    — the running Harvey agent.
@@ -151,51 +74,41 @@ func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
  *   if switched, err := attemptModelSwitch(a, "phi-mini", out); switched { ... }
  */
 func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
-	// Check llamafile registry first (case-insensitive).
-	for _, e := range a.Config.Llamafile.Models {
-		if strings.EqualFold(e.Name, name) {
-			err := switchLlamafileModel(a, e.Name, "", out)
-			return true, err
+	// Check model aliases (stored with lowercase keys), then the model names
+	// they point at: a tag lookup (@code) resolves to a model name, not a key.
+	entry, ok := a.Config.ModelAliases[strings.ToLower(name)]
+	if !ok {
+		for _, e := range a.Config.ModelAliases {
+			if strings.EqualFold(e.Model, name) {
+				entry, ok = e, true
+				break
+			}
 		}
 	}
-	// Check model aliases (stored with lowercase keys).
-	if entry, ok := a.Config.ModelAliases[strings.ToLower(name)]; ok {
+	if ok {
 		full := entry.Model
-		switch entry.Engine {
-		case "llamacpp":
-			path, err := resolveLlamaCppModelPath(full, llamaCppModelsDir(a.Config))
-			if err != nil {
+		if _, configured := a.Config.Services[entry.Engine]; configured {
+			if err := a.setServiceModel(entry.Engine, full); err != nil {
 				return true, err
 			}
-			return true, startLlamaCppModelPath(a, path, out)
-		case "hailo":
+		} else if entry.Engine == "hailo" {
 			if err := a.setHailoModel(full); err != nil {
 				return true, err
 			}
-			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
-			return true, nil
-		case "ollama":
+		} else {
 			a.useOllamaClient(full)
-			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
-			return true, nil
-		default:
-			// "llamafile" or "" (legacy): try switchLlamafileModel, then fall back to Ollama.
-			err := switchLlamafileModel(a, full, "", out)
-			if err != nil {
-				a.useOllamaClient(full)
-				fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
-			}
-			return true, nil
 		}
+		fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
+		a.noteWindow(out)
+		return true, nil
 	}
 	// Name not found in any registry.
 	return false, nil
 }
 
 /** activeModelLabel returns a short human-readable label for the currently
- * configured model backend, e.g. "qwen-coding (llamafile)" or "llama3.2:3b (ollama)".
- * Returns "none" when no backend is configured. Llamafile takes priority when
- * both LlamafileActive and OllamaModel are set.
+ * configured model backend, e.g. "llama3.2:3b (ollama)".
+ * Returns "none" when no backend is configured.
  *
  * Parameters:
  *   a (*Agent) — the running Harvey agent.
@@ -209,14 +122,11 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 func activeModelLabel(a *Agent) string {
 	// Prefer the live backend — it knows the actual engine and model name.
 	if a.Backend != nil && a.Backend.ActiveModel() != "" {
-		return a.Backend.ActiveModel() + " (" + a.Backend.Name() + ")"
+		return a.displayModel(a.activeServiceName(), a.Backend.ActiveModel())
 	}
 	// Fallback to config fields (Ollama has no ManagedBackend wrapper).
-	if a.Config.Llamafile.Active != "" {
-		return a.Config.Llamafile.Active + " (llamafile)"
-	}
 	if a.Config.Ollama.Model != "" {
-		return a.Config.Ollama.Model + " (ollama)"
+		return a.displayModel("ollama", a.Config.Ollama.Model)
 	}
 	return "none"
 }
@@ -366,18 +276,7 @@ func (a *Agent) Run(out io.Writer) error {
 			a.Config.Ollama.ContextLength = n
 		}
 	}
-	defer func() {
-		if a.Recorder != nil {
-			path := a.Recorder.Path()
-			a.Recorder.Close()
-			a.Recorder = nil
-			fmt.Fprintf(out, dim("  Session saved to %s\n"), path)
-		}
-		if a.DebugLog != nil {
-			a.DebugLog.Close()
-			a.DebugLog = nil
-		}
-	}()
+	defer func() { a.finishSession(out) }()
 	// reader is used only for startup yes/no prompts. newLineReader takes exactly what
 	// it is asked for, so it cannot consume bytes that the LineEditor needs for the REPL
 	// loop (bufio's smallest buffer is 16 bytes, so a "1-byte" bufio reader did).
@@ -404,6 +303,15 @@ func (a *Agent) Run(out io.Writer) error {
 			return fmt.Errorf("harvey.yaml: %w", err)
 		}
 	}
+	// What changed since this workspace last ran: standard error only, so it
+	// cannot reach the session's input or output (upgrade_notice.go).
+	if a.Config.Session.ReplayPath == "" {
+		var errOut io.Writer = os.Stderr
+		if a.stderr != nil {
+			errOut = a.stderr
+		}
+		a.announceUpgrade(errOut, runningVersion, upgradeNoticeTable)
+	}
 	if a.Config.Security.SafeMode {
 		fmt.Fprintln(out, green("✓")+" Safe mode on")
 	} else {
@@ -417,7 +325,6 @@ func (a *Agent) Run(out io.Writer) error {
 	a.initModelCache(out)
 
 	// RAG store (optional — only when configured in harvey.yaml)
-	a.initRag(out)
 
 	// Memory subsystems (session-scoped; opened once, closed on exit)
 	a.initMemory(out)
@@ -458,22 +365,24 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// PID re-adoption: if a prior Harvey session left a running backend, adopt it.
 	agentsDir := filepath.Join(a.Workspace.Root, "agents")
-	if adopted := a.tryAdoptPriorBackend(agentsDir, out); !adopted {
+	if err := a.skippedRoutes(out, interactive); err != nil {
+		return err
+	}
+	if a.Config.Memory.RagRemoved {
+		fmt.Fprintln(out, "  ⚠  harvey.yaml has a memory.rag section: /rag was removed (workspace DR-0035). The store files stay on disk, the section is dropped the next time the configuration is saved, and documents are ingested with kb document ingest.")
+	}
+	adopted := a.tryAdoptPriorBackend(agentsDir, out)
+	if !adopted {
 		// Backend selection — use sessionModel as the preferred model hint.
-		// If no session hint is set but the --llamafile flag set Config.Llamafile.Active,
-		// use it so pickBackend can auto-select without an extra interactive prompt.
-		hint := sessionModel
-		if hint == "" && a.Config.Llamafile.Active != "" {
-			hint = a.Config.Llamafile.Active
-		}
-		if err := a.selectBackend(reader, out, hint); err != nil {
+		if err := a.selectBackend(reader, out, sessionModel); err != nil {
 			return err
 		}
 		// At a terminal, no backend leaves the session usable: /model use can
 		// connect one. Without a terminal there is nobody to do that.
 		if a.Client == nil && !interactive {
-			return Unavailablef("no backend connected: start Ollama or register a llamafile, then use /model use")
+			return Unavailablef("no backend connected: start Ollama, then use /model use")
 		}
+		a.checkDraftModel(out)
 	}
 
 	// Preflight: verify the active model's context can hold the system
@@ -499,27 +408,11 @@ func (a *Agent) Run(out io.Writer) error {
 		return err
 	}
 
-	// Debug log — open after backend is known so session_start can record the model.
-	if a.Config.Debug && a.SessionsDir != "" {
-		logsDir := filepath.Join(filepath.Dir(a.SessionsDir), "logs")
-		if dl, err := OpenDebugLog(logsDir); err != nil {
-			fmt.Fprintf(out, yellow("  ✗")+" Debug log: %v\n", err)
-		} else {
-			a.DebugLog = dl
-			fmt.Fprintf(out, green("✓")+" Debug log: %s\n", dl.Path())
-			// Wire the debug log to the LLM client.
-			if ac, ok := a.Client.(*AnyLLMClient); ok {
-				ac.DebugLog = dl
-			}
-			modelID, modelDisplay, provider := "", "", ""
-			if a.Client != nil {
-				modelDisplay = a.Client.Name()
-				if ac, ok := a.Client.(*AnyLLMClient); ok {
-					modelID = ac.ModelName()
-					provider = ac.ProviderName()
-				}
-			}
-			dl.LogSessionStart(modelID, modelDisplay, provider, a.Workspace.Root, Version)
+	// A session that died leaves a log with no end; render its Fountain file now,
+	// before this session's own files exist.
+	if a.SessionsDir != "" {
+		if names, _ := RecoverSessionFiles(a.SessionsDir, time.Local); len(names) > 0 {
+			fmt.Fprintf(out, yellow("  ⚠")+" Recovered %d session(s) that ended without closing: %s\n", len(names), strings.Join(names, ", "))
 		}
 	}
 
@@ -546,6 +439,7 @@ func (a *Agent) Run(out io.Writer) error {
 		} else {
 			a.Recorder = rec
 			fmt.Fprintf(out, green("✓")+" Recording to %s\n", recPath)
+			a.openSessionLog(recPath, "", out)
 		}
 	}
 
@@ -563,7 +457,7 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintf(out, "  Replay mode: %s\n", a.Config.Session.ReplayPath)
 		fmt.Fprintln(out, cyan(bold(sep)))
 		fmt.Fprintln(out)
-		if err := a.ReplayFromFountain(replayCtx, a.Config.Session.ReplayPath, outPath, out); err != nil {
+		if err := a.ReplayFromSession(replayCtx, a.Config.Session.ReplayPath, outPath, out); err != nil {
 			return err
 		}
 		if !a.Config.Session.ReplayContinue {
@@ -581,6 +475,7 @@ func (a *Agent) Run(out io.Writer) error {
 			} else {
 				a.Recorder = rec
 				fmt.Fprintf(out, green("✓")+" Recording continuation to %s\n", contRecPath)
+				a.openSessionLog(contRecPath, a.Config.Session.ReplayPath, out)
 			}
 		}
 		fmt.Fprintln(out, cyan(bold(sep)))
@@ -604,7 +499,7 @@ func (a *Agent) Run(out io.Writer) error {
 				fmt.Fprintln(out, dim("  Use /model use NAME to switch."))
 			}
 		}
-		n, contErr := a.ContinueFromFountain(a.Config.Session.ContinuePath)
+		n, contErr := a.ContinueFromSession(a.Config.Session.ContinuePath)
 		if contErr != nil {
 			fmt.Fprintf(out, yellow("  ✗")+" Continue failed: %v\n", contErr)
 		} else {
@@ -616,6 +511,7 @@ func (a *Agent) Run(out io.Writer) error {
 	fmt.Fprintln(out, cyan(bold(sep)))
 	if a.Client != nil {
 		fmt.Fprintf(out, "  Connected: %s\n", green(activeModelLabel(a)))
+		a.noteWindow(out)
 	} else {
 		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /model use"))
 	}
@@ -626,19 +522,9 @@ func (a *Agent) Run(out io.Writer) error {
 	// Memory digest — dim hints about pending actions, only printed when actionable.
 	sessionMemoryDigest(a, out)
 
-	// Workspace profile onboarding — runs once when workspace_profile/ is empty.
-	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Session.ReplayPath == "" &&
-		a.Memory != nil && a.Memory.Store != nil {
-		if NeedsOnboarding(a.Memory.Store) {
-			var onboardEmbedder Embedder
-			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				onboardEmbedder = a.embedderFor(entry)
-			}
-			if onboardErr := RunOnboarding(a, a.Memory.Store, onboardEmbedder, out, reader); onboardErr != nil {
-				fmt.Fprintf(out, yellow("  ✗")+" Onboarding: %v\n", onboardErr)
-			}
-		}
-	}
+	// No first-run profile prompt: profiles are not kept past the pre-release
+	// (DR-0037, TODO.md), and the prompt took the first line of piped input as
+	// its answer. RunOnboarding stays for /profile until the memory store goes.
 
 	// Attach completer now that all state (models, routes, aliases) is loaded.
 	le.Completer = a.buildCompleter()
@@ -746,6 +632,9 @@ func (a *Agent) Run(out io.Writer) error {
 				continue
 			}
 
+			// The call is logged first so the permission decision below can name it.
+			shellCallID := a.logShellCall(cmdLine)
+
 			// Log allowed command execution
 			if a.AuditBuffer != nil {
 				a.AuditBuffer.Log(ActionCommand, program+" "+strings.Join(args, " "), StatusAllowed)
@@ -789,6 +678,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 			fmt.Fprintln(out)
 			if wasCancelled || errors.Is(runErr, context.Canceled) {
+				a.logShellResult(shellCallID, "cancelled", nil, cappedOutput(capBuf.Bytes()), len(capBuf.Bytes()) > maxRunOutput, nil)
 				fmt.Fprintln(out, dim("  Cancelled."))
 				continue
 			}
@@ -816,25 +706,32 @@ func (a *Agent) Run(out io.Writer) error {
 				sb.WriteString("\n... (output truncated)")
 			}
 			sb.WriteString("\n```\n")
-			a.AddMessage("user", sb.String())
+			a.addPrompt("user", "shell", sb.String())
 			fmt.Fprintf(out, dim("  %d bytes added to context%s.\n"), len(output), exitNote)
-
-			if a.Recorder != nil {
-				if recErr := a.Recorder.RecordShellCommand(cmdLine, string(output), exitCode); recErr != nil {
-					fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
+			{
+				var exitPtr *int
+				status := "ok"
+				if shCmd.ProcessState != nil {
+					exitPtr = &exitCode
 				}
+				if exitCode != 0 || runErr != nil {
+					status = "error"
+				}
+				a.logShellInjection(a.logShellResult(shellCallID, status, exitPtr, output, truncated, runErr))
 			}
+
 			continue
 		}
 
 		// @mention: dispatch to a registered remote endpoint, or switch to a
-		// local model when the name matches a registered llamafile or alias.
+		// local model when the name matches an alias.
 		if name, prompt, ok := ParseAtMention(input); ok {
 			// Step 1: Route dispatch — only when routing is enabled and the
 			// name matches a registered endpoint.
 			if a.Routes != nil && a.Routes.Enabled {
 				if ep := a.Routes.Lookup(name); ep != nil {
 					le.AppendHistory(input)
+					a.logUserInputVia(input, name)
 					fmt.Fprintf(out, dim("  → dispatching to @%s\n"), name)
 					fmt.Fprintln(out)
 
@@ -855,7 +752,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 					sp := newSpinner(out, 0, routeSpinnerLabel(name, ep))
 					sp.UpdateStatus("routed → " + name)
-					reply, dispErr := DispatchToEndpoint(dispCtx, ep, a.History, prompt, a.Config, a.Tools, io.Discard)
+					reply, dispErr := DispatchToEndpointLogged(dispCtx, ep, a.History, prompt, a.Config, a.Tools, io.Discard, a)
 					sp.stop()
 					close(watchDone)
 					cancelDisp()
@@ -874,18 +771,12 @@ func (a *Agent) Run(out io.Writer) error {
 					fmt.Fprintln(out, dim("  @"+name))
 					a.foldBackTurn(input, reply)
 
-					if a.Recorder != nil {
-						// Route dispatch is remote computation — use EXT. scene.
-						if recErr := a.Recorder.RecordExteriorTurn(strings.ToUpper(name), input, reply); recErr != nil {
-							fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
-						}
-					}
 					a.autoExecuteReply(reply, out, reader, context.Background())
 					continue
 				}
 			}
 
-			// Step 2: Local model switch — try registered llamafiles and aliases.
+			// Step 2: Local model switch — try aliases.
 			switched, switchErr := attemptModelSwitch(a, name, out)
 			if switchErr != nil {
 				fmt.Fprintf(out, red("  @%s switch failed: ")+"%v\n", name, switchErr)
@@ -935,6 +826,7 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 
 		le.AppendHistory(input)
+		a.logUserInput(input)
 
 		// Intercept skill-related questions and answer directly from the
 		// catalog. Small models (e.g. tinyllama) reliably ignore the
@@ -970,31 +862,6 @@ func (a *Agent) Run(out io.Writer) error {
 		reply, _, turnErr := a.runChatTurn(chatCtx, input, out, reader, true, charName)
 		close(watchDone)
 		cancelChat()
-
-		// Auto-reconnect: when the backend server drops mid-session, offer
-		// to restart it and retry the turn rather than surfacing a raw HTTP error.
-		if turnErr != nil && isConnectionError(turnErr) &&
-			a.Backend != nil && a.Backend.StartedByHarvey() && !probeActiveBackend(a) {
-			backendName := a.Backend.Name()
-			modelName := a.Backend.ActiveModel()
-			fmt.Fprintf(out, yellow("  ⚠ The %s server stopped unexpectedly.\n"), backendName)
-			if askYesNo(reader, out, fmt.Sprintf("  Restart %s? [Y/n] ", modelName), true) {
-				var restartErr error
-				switch backendName {
-				case "llamacpp":
-					restartErr = restartActiveLlamaCpp(a, out)
-				default:
-					restartErr = restartActiveLlamafile(a, out)
-				}
-				if restartErr == nil {
-					retryCtx, retryCancel := context.WithCancel(context.Background())
-					reply, _, turnErr = a.runChatTurn(retryCtx, input, out, reader, true, charName)
-					retryCancel()
-				} else {
-					fmt.Fprintf(out, red("  Restart failed: ")+"%v\n", restartErr)
-				}
-			}
-		}
 
 		// When a skill was loaded for this turn and the model responded with a
 		// parseable plan checklist, auto-save it to agents/plan.md so the user
@@ -1039,18 +906,13 @@ func (a *Agent) Run(out io.Writer) error {
 	if a.Config.Memory.Enabled && a.Workspace != nil &&
 		a.Recorder != nil && a.sessionTurns >= autoMineTurnThreshold {
 		sessionPath := a.Recorder.Path()
-		a.Recorder.Close()
-		a.Recorder = nil
-		fmt.Fprintf(out, dim("  Session saved to %s\n"), sessionPath)
+		a.finishSession(out)
 
 		fmt.Fprintln(out, dim("  [auto-mining session for memories — use /memory mine to review manually]"))
 		if a.Memory != nil && a.Memory.Store != nil {
 			manifest, mErr := LoadManifest(a.Memory.Store.Dir())
 			if mErr == nil && !manifest.IsMined(sessionPath) {
-				var embedder Embedder
-				if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-					embedder = a.embedderFor(entry)
-				}
+				var embedder Embedder = a.memoryEmbedder()
 				miner := NewMiner(a.Memory.Store, manifest, a.Workspace)
 				if mineErr := miner.MineAuto(context.Background(), sessionPath, a, embedder, out); mineErr != nil {
 					fmt.Fprintf(out, "%s Auto-mine: %v\n", yellow("  ✗"), mineErr)
@@ -1065,11 +927,7 @@ func (a *Agent) Run(out io.Writer) error {
 		if a.Recorder != nil {
 			sessionID = filepath.Base(a.Recorder.Path())
 		}
-		budget := 512
-		if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
-			budget = int(float64(a.Config.Ollama.ContextLength) * a.Config.Memory.BudgetPct)
-		}
-		_ = a.Memory.Store.RecordSessionStats(sessionID, budget, a.sessionInjectedTokens,
+		_ = a.Memory.Store.RecordSessionStats(sessionID, a.memoryBudget(), a.sessionInjectedTokens,
 			a.sessionCompressed, a.avgToksPerSec())
 	}
 
@@ -1115,6 +973,10 @@ func keepFirstFailure(existing, candidate error) error {
  *   }
  */
 func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool, charName string) (string, ChatStats, error) {
+	// Every model call under this turn (the tool loop, the retries) is logged as
+	// part of the turn.
+	ctx = withCallPurpose(ctx, purposeTurn, nil)
+
 	// Fit the system prompt to the model in use now: a /model switch since the
 	// last turn may have changed its prompt limit, in either direction.
 	a.refreshSystemPrompt(out)
@@ -1136,8 +998,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		turnBudget = 4096 // context limit unknown — conservative default
 	}
 	tracker := NewBudgetTracker(turnBudget)
-	augmented, ragInfo := a.ragAugmentTo(out, input, tracker)
-	a.LastRAGInfo = ragInfo
+	augmented := input
 
 	// File-reference injection — for models that don't reliably call read_file,
 	// resolve any mentioned file paths and prepend their content directly.
@@ -1147,15 +1008,16 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	}
 
 	augmented += stmWarnNudge(a)
+	a.logTurnMessage(augmented)
 	a.AddMessage("user", augmented)
 
-	a.trimHistoryToBudget(out)
+	a.assembleForTurn(out)
 
 	// A model with a known prompt limit would answer HTTP 500, or stop
 	// responding, to a prompt past it. Refuse here with a message instead, and
 	// take the message back out so the conversation stays usable.
 	if err := a.promptBudgetError(); err != nil {
-		a.History = a.History[:len(a.History)-1]
+		a.dropLastMessage("failed")
 		return "", ChatStats{}, err
 	}
 
@@ -1187,7 +1049,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	sp := newSpinner(out, a.estimateDuration(), spLabel)
 	var stats ChatStats
 	var chatErr error
-	var toolCallRecords []ToolCallRecord
 	// Use RunToolLoop only when tools are configured AND the model's ToolMode
 	// allows structured calls. Explicit modes prose/inject/none bypass the loop.
 	useStructuredTools := a.Tools != nil && a.Config.ToolsEnabled
@@ -1199,8 +1060,8 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	}
 	if useStructuredTools {
 		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
-		ex.DebugLog = a.DebugLog
 		ex.Status = sp
+		ex.Events = a.toolEvents()
 		a.ActiveStatus = sp
 		ex.CharacterName = charName
 		var updatedHistory []Message
@@ -1208,7 +1069,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		if chatErr == nil {
 			// Preserve any intermediate tool-call/result messages added by the loop.
 			a.History = updatedHistory
-			toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
 		}
 	} else {
 		stats, chatErr = a.Client.Chat(ctx, a.History, &buf)
@@ -1217,7 +1077,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	a.ActiveStatus = nil
 
 	if ctx.Err() != nil || errors.Is(chatErr, context.Canceled) {
-		a.History = a.History[:len(a.History)-1]
+		a.dropLastMessage("cancelled")
 		return "", ChatStats{}, context.Canceled
 	}
 	// A failure that looks like an oversize prompt gets one retry on a smaller
@@ -1238,16 +1098,16 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		fmt.Fprintln(out, yellow("  ⚠")+" Model entered a tool-calling loop; retrying without tools.")
 		fmt.Fprintln(out, dim("  Tip: /tools off disables tools for this model permanently in this session."))
 		buf.Reset()
-		fallbackCtx, cancelFallback := context.WithCancel(context.Background())
+		fallbackCtx, cancelFallback := context.WithCancel(withCallPurpose(context.Background(), purposeTurn, nil))
 		stats, chatErr = a.Client.Chat(fallbackCtx, a.History, &buf)
 		cancelFallback()
 		if chatErr != nil {
-			a.History = a.History[:len(a.History)-1]
+			a.dropLastMessage("failed")
 			return "", ChatStats{}, fmt.Errorf("fallback: %w", chatErr)
 		}
 		// Fall through to the normal display and recording path.
 	} else if chatErr != nil {
-		a.History = a.History[:len(a.History)-1]
+		a.dropLastMessage("failed")
 		return "", ChatStats{}, chatErr
 	}
 
@@ -1266,15 +1126,15 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 			// Surgical rollback: remove only the assistant refusal; preserve
 			// any tool-call/result pairs RunToolLoop added before the refusal
 			// so the retry sees the full prior context.
-			a.History = a.History[:len(a.History)-1]
-			a.AddMessage("user", retryAugmented)
+			a.dropLastMessage("retry")
+			a.addPrompt("user", "retry", retryAugmented)
 			buf.Reset()
 			var retryStats ChatStats
 			if useStructuredTools {
 				retrySp := newSpinner(out, a.estimateDuration(), spLabel)
 				ex := NewToolExecutor(a.Tools, a.Client, a.Config)
-				ex.DebugLog = a.DebugLog
 				ex.Status = retrySp
+				ex.Events = a.toolEvents()
 				a.ActiveStatus = retrySp
 				ex.CharacterName = charName
 				var updatedHistory []Message
@@ -1283,7 +1143,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 				a.ActiveStatus = nil
 				if chatErr == nil {
 					a.History = updatedHistory
-					toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
 				}
 			} else {
 				retryStats, chatErr = a.Client.Chat(ctx, a.History, &buf)
@@ -1292,7 +1151,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 				stats = retryStats
 			} else {
 				// Retry failed — restore history and surface the error.
-				a.History = a.History[:len(a.History)-1]
+				a.dropLastMessage("failed")
 				return "", ChatStats{}, fmt.Errorf("retry: %w", chatErr)
 			}
 		}
@@ -1410,11 +1269,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	}
 
 	a.AddMessage("assistant", buf.String())
-	if a.Recorder != nil {
-		if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, "", toolCallRecords, ragInfo); recErr != nil {
-			fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
-		}
-	}
 	// Feed unknown-tool errors back into history so the model can self-correct
 	// on the next turn (now that the assistant message is in place, the history
 	// order is correct: …, assistant: <hallucinated call>, user: <correction>).
@@ -1424,7 +1278,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 			" do not exist. Available tools: " +
 			strings.Join(availableToolNames(a), ", ") +
 			". Please retry using one of these exact tool names."
-		a.AddMessage("user", correction)
+		a.addPrompt("user", "correction", correction)
 	}
 	// Skip autoExecuteReply when the model already wrote files via tool calls —
 	// the response text may contain display-only code blocks (e.g. directory
@@ -1435,22 +1289,9 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		a.autoExecuteReply(buf.String(), out, reader, ctx)
 	}
 
-	// Rolling summary: compress history when approaching the context limit.
-	if a.Config.Memory.RollingSummary.Enabled && a.Client != nil {
-		contextLen := a.effectiveContextLimit()
-		if contextLen > 0 {
-			histTokens := estimateTokens(HistoryText(a.History))
-			if ShouldCompress(histTokens, contextLen, a.Config.Memory.RollingSummary.WarnAtPct) {
-				pct := histTokens * 100 / contextLen
-				fmt.Fprintln(out, dim(fmt.Sprintf("  [context ~%d%% full — compressing older turns]", pct)))
-				if compErr := CompressHistory(a, a.Config.Memory.RollingSummary.KeepTurns, out); compErr != nil {
-					fmt.Fprintf(out, "%s Compression failed: %v\n", yellow("  ✗"), compErr)
-				} else {
-					a.sessionCompressed = true
-				}
-			}
-		}
-	}
+	// Summarise the older turns when the conversation nears the limit; the
+	// summary is a compaction event that names the turns it stands for.
+	a.summarizeForNextTurn(ctx, out)
 
 	return buf.String(), stats, nil
 }
@@ -1510,46 +1351,6 @@ func saveCmdHistory(ws *Workspace, le *termlib.LineEditor) {
 	}
 	data := []byte(strings.Join(entries, "\n") + "\n")
 	_ = ws.WriteFile(cmdHistoryFile, data, 0o600)
-}
-
-// toolCallsFromHistory extracts ToolCallRecords from a slice of history
-// messages. It pairs each tool call from assistant turns with its result
-// status from the corresponding tool-role message. charName is stamped onto
-// every record's Character field; pass "" for HARVEY (default, no prefix).
-func toolCallsFromHistory(msgs []Message, charName string) []ToolCallRecord {
-	// Build a map from ToolCallID to result status derived from tool-role messages.
-	resultByID := make(map[string]string)
-	for _, m := range msgs {
-		if m.Role != "tool" || m.ToolCallID == "" {
-			continue
-		}
-		content := strings.TrimSpace(m.Content)
-		first := strings.SplitN(content, "\n", 2)[0]
-		if strings.HasPrefix(first, "error:") {
-			resultByID[m.ToolCallID] = first
-		} else {
-			resultByID[m.ToolCallID] = "ok"
-		}
-	}
-	var out []ToolCallRecord
-	for _, m := range msgs {
-		if m.Role != "assistant" || len(m.ToolCalls) == 0 {
-			continue
-		}
-		for _, tc := range m.ToolCalls {
-			result := resultByID[tc.ID]
-			if result == "" {
-				result = "ok"
-			}
-			out = append(out, ToolCallRecord{
-				Name:      tc.Function.Name,
-				Args:      tc.Function.Arguments,
-				Result:    result,
-				Character: charName,
-			})
-		}
-	}
-	return out
 }
 
 // routeSpinnerLabel returns the spinner label for an @mention dispatch turn.
@@ -1638,32 +1439,6 @@ func (a *Agent) initModelCache(out io.Writer) {
 	}
 	a.ModelCache = mc
 	fmt.Fprintf(out, green("✓")+" Model cache: %s\n", mc.Path())
-}
-
-// initRag opens the active RAG store when one is configured in harvey.yaml.
-// Failures are non-fatal. RagOn is set to match cfg.Memory.RagEnabled.
-func (a *Agent) initRag(out io.Writer) {
-	entry := a.Config.Memory.ActiveRagStore()
-	if entry == nil {
-		return
-	}
-	dbPath, err := a.Workspace.AbsPath(entry.DBPath)
-	if err != nil {
-		fmt.Fprintf(out, yellow("  ✗")+" RAG store unavailable: %v\n", err)
-		return
-	}
-	store, err := NewRagStore(dbPath, entry.EmbeddingModel)
-	if err != nil {
-		fmt.Fprintf(out, yellow("  ✗")+" RAG store unavailable: %v\n", err)
-		return
-	}
-	a.Rag = store
-	a.RagOn = a.Config.Memory.RagEnabled
-	status := "off"
-	if a.RagOn {
-		status = "on"
-	}
-	fmt.Fprintf(out, green("✓")+" RAG store: %s (%s) [%s]\n", entry.Name, entry.DBPath, status)
 }
 
 // initMemory opens the session-scoped MemorySystem. Failures are non-fatal —
@@ -1911,11 +1686,6 @@ func (a *Agent) buildCompleter() func(string) []string {
 					currentPos = len(tokens)
 				}
 				if currentPos >= pathStart {
-					if strings.HasPrefix(word, "s3://") {
-						candidates := remotePathCandidates(word)
-						sortStrings(candidates)
-						return candidates
-					}
 					matches := workspacePathCandidates(a.Workspace.Root, word, onlyDirs, extFilter)
 					sortStrings(matches)
 					return matches
@@ -2058,84 +1828,9 @@ func sessionMemoryDigest(a *Agent, out io.Writer) {
 			}
 		}
 	}
-
-	// RAG store hints.
-	entry := a.Config.Memory.ActiveRagStore()
-	if entry == nil {
-		return
-	}
-	if a.Rag == nil {
-		return
-	}
-	n, err := a.Rag.Count()
-	if err != nil {
-		return
-	}
-	if n == 0 {
-		fmt.Fprint(out, dim(fmt.Sprintf("  RAG store %q is empty — /rag ingest <files> to add knowledge\n", entry.Name)))
-	} else if !a.RagOn {
-		fmt.Fprint(out, dim(fmt.Sprintf("  RAG has %d chunk(s) but is off — /rag on to enable context injection\n", n)))
-	}
 }
 
 
-
-/** remotePathCandidates returns tab-completion candidates for a partial s3:// URI.
- * It lists objects under the directory portion of word using the S3 backend.
- * Returns nil silently when credentials are absent, the URI is malformed, or
- * the scheme is not s3://.
- *
- * Parameters:
- *   word (string) — the partial URI being typed, e.g. "s3://bucket/docs/".
- *
- * Returns:
- *   []string — full s3:// URIs of matching objects; nil when completion is unavailable.
- *
- * Example:
- *   candidates := remotePathCandidates("s3://mybucket/docs/")
- *   // returns ["s3://mybucket/docs/spec.md", "s3://mybucket/docs/guide.md"]
- */
-func remotePathCandidates(word string) []string {
-	if !strings.HasPrefix(word, "s3://") {
-		return nil
-	}
-	rest := word[5:] // after "s3://"
-	slashIdx := strings.IndexByte(rest, '/')
-	if slashIdx < 0 {
-		return nil // still typing the bucket name
-	}
-	bucket := rest[:slashIdx]
-	if bucket == "" {
-		return nil
-	}
-	keyPart := rest[slashIdx+1:] // everything after s3://bucket/
-
-	// List under the directory portion (up to the last '/').
-	dir := ""
-	base := keyPart
-	if lastSlash := strings.LastIndexByte(keyPart, '/'); lastSlash >= 0 {
-		dir = keyPart[:lastSlash+1]
-		base = keyPart[lastSlash+1:]
-	}
-	listURI := "s3://" + bucket + "/" + dir
-
-	s3r, err := newS3Reader()
-	if err != nil {
-		return nil
-	}
-	objects, err := s3r.List(context.Background(), listURI)
-	if err != nil {
-		return nil
-	}
-	var results []string
-	for _, obj := range objects {
-		key := strings.TrimPrefix(obj.URI, "s3://"+bucket+"/")
-		if base == "" || strings.HasPrefix(key, dir+base) {
-			results = append(results, obj.URI)
-		}
-	}
-	return results
-}
 
 /** isTerminal reports whether f is a terminal. It is a variable so tests can
  * stand in for a terminal or a pipe.

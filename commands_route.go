@@ -7,16 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"sort"
 	"strings"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 /** cmdRoute handles remote endpoint routing configuration for multi-model
  * workflows. Routes allow dispatching prompts to remote LLM endpoints via
- * @mention syntax (e.g., @claude, @mistral) or explicitly via /route.
+ * @mention syntax (e.g., @pi2) or explicitly via /route.
  *
  * Subcommands:
  *   add NAME URL [MODEL]       — Register a new remote endpoint
@@ -30,11 +27,8 @@ import (
  *   status                     — Show routing status and endpoints
  *
  * Supported endpoint types:
- *   Local:  ollama://host:port, llamafile://host:port, llamacpp://host:port
- *   Cloud:  anthropic://, deepseek://, gemini://, mistral://, openai://
- *
- * Cloud providers read API keys from environment variables:
- *   ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, OPENAI_API_KEY
+ *   ollama://host:port (also http:// and https://), an Ollama or hailo-ollama
+ *   server on this machine or the local network.
  *
  * Parameters:
  *   a    (*Agent)    — Harvey agent with route registry.
@@ -118,7 +112,7 @@ func cmdRoute(a *Agent, args []string, out io.Writer) error {
 func routeAdd(a *Agent, args []string, out io.Writer) error {
 	var persistErr error
 	if len(args) < 2 {
-		return Usagef("usage: /route add NAME URL [MODEL]  (local: ollama://host:port llamafile://host:port llamacpp://host:port; cloud: anthropic:// deepseek:// gemini:// mistral:// openai://, which read API keys from environment variables)")
+		return Usagef("usage: /route add NAME URL [MODEL]  ollama://host:port, http:// or https://)")
 	}
 	name, rawURL := args[0], args[1]
 	model := ""
@@ -255,7 +249,7 @@ func routeStatus(a *Agent, out io.Writer) error {
 }
 
 // formatCapabilities returns a compact one-line capability summary.
-func formatCapabilities(caps anyllm.Capabilities) string {
+func formatCapabilities(caps Capabilities) string {
 	f := func(b bool) string {
 		if b {
 			return "✓"
@@ -269,15 +263,13 @@ func formatCapabilities(caps anyllm.Capabilities) string {
 }
 
 /** routeModels lists available models for a provider URL before a route is
- * registered. Takes a raw URL (e.g. "anthropic://") to infer the provider kind.
- * For Anthropic the v1/models API is called directly; all other providers use
- * the any-llm-go ModelLister interface.
+ * registered. Takes a raw URL (e.g. "ollama://192.168.1.12:11434") to infer the provider kind.
  *
  * Usage: /route models URL
  */
 func routeModels(a *Agent, args []string, out io.Writer) error {
 	if len(args) < 1 {
-		return Usagef("usage: /route models URL  (example: /route models anthropic://  or  /route models ollama://192.168.1.12:11434)")
+		return Usagef("usage: /route models URL  (example: /route models ollama://192.168.1.12:11434)")
 	}
 	rawURL := args[0]
 	kind, err := InferRouteKind(rawURL)
@@ -291,7 +283,7 @@ func routeModels(a *Agent, args []string, out io.Writer) error {
 	// Show static capabilities (no network call needed).
 	ep := &RouteEndpoint{Kind: kind, URL: rawURL}
 	if client, cerr := clientForEndpoint(ep, a.Config); cerr == nil {
-		if ac, ok := client.(*AnyLLMClient); ok {
+		if ac, ok := client.(*OllamaChatClient); ok {
 			fmt.Fprintf(out, "  Capabilities: %s\n", formatCapabilities(ac.ProviderCapabilities()))
 		}
 	}
@@ -354,7 +346,7 @@ func routeProbe(a *Agent, name string, out io.Writer) error {
 
 	if reach {
 		if client, err := clientForEndpoint(ep, a.Config); err == nil {
-			if ac, ok := client.(*AnyLLMClient); ok {
+			if ac, ok := client.(*OllamaChatClient); ok {
 				fmt.Fprintf(out, "  Caps:     %s\n", formatCapabilities(ac.ProviderCapabilities()))
 			}
 		}
@@ -406,25 +398,11 @@ func routeSet(a *Agent, args []string, out io.Writer) error {
 }
 
 // probeRouteEndpoint returns true when ep appears reachable.
-// Local providers are probed via HTTP; cloud providers check for a non-empty API key env var.
+// Ollama endpoints are probed via HTTP.
 func probeRouteEndpoint(ep *RouteEndpoint, cfg *Config) bool {
 	switch ep.Kind {
 	case KindOllama:
 		return ProbeOllama(ollamaBaseURL(ep.URL))
-	case KindLlamafile:
-		return ProbeEncoderfile(LlamafileHealthURL(ep.URL))
-	case KindLlamaCpp:
-		return ProbeEncoderfile(LlamafileHealthURL(LlamacppAPIURL(ep.URL)))
-	case KindAnthropic:
-		return os.Getenv("ANTHROPIC_API_KEY") != ""
-	case KindDeepSeek:
-		return os.Getenv("DEEPSEEK_API_KEY") != ""
-	case KindGemini:
-		return os.Getenv("GEMINI_API_KEY") != "" || os.Getenv("GOOGLE_API_KEY") != ""
-	case KindMistral:
-		return os.Getenv("MISTRAL_API_KEY") != ""
-	case KindOpenAI:
-		return os.Getenv("OPENAI_API_KEY") != ""
 	}
 	return false
 }

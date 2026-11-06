@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -37,10 +38,10 @@ func TestFormatContext_MultiSource(t *testing.T) {
 	results := []UnifiedResult{
 		{Source: string(MemoryTypeWorkspaceProfile), ID: "wp1", Content: "workspace info", Score: 1.0},
 		{Source: "experiential", ID: "exp1", Content: "tool_use: git tip", Score: 0.9},
-		{Source: "rag", ID: "rag:1", Content: "some chunk text", Score: 0.8},
+		{Source: "kb", ID: "kb:1", Content: "some observation text", Score: 0.8},
 	}
 	got := FormatContext(results)
-	for _, want := range []string{"[workspace profile]", "[relevant experience]", "[knowledge]"} {
+	for _, want := range []string{"[workspace profile]", "[relevant experience]", "[project knowledge]"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in output:\n%s", want, got)
 		}
@@ -51,7 +52,7 @@ func TestFormatContext_GroupsBySource(t *testing.T) {
 	results := []UnifiedResult{
 		{Source: "experiential", ID: "a", Content: "first"},
 		{Source: "experiential", ID: "b", Content: "second"},
-		{Source: "rag", ID: "rag:1", Content: "chunk"},
+		{Source: "kb", ID: "kb:1", Content: "chunk"},
 	}
 	got := FormatContext(results)
 	// [relevant experience] should appear exactly once.
@@ -93,7 +94,7 @@ func TestRecall_FactualOnly(t *testing.T) {
 	}
 	defer store.Close()
 
-	doc := NewMemoryDoc("wp_001", MemoryTypeWorkspaceProfile,
+	doc := NewMemoryDoc("wp_001", MemoryTypeProjectFact,
 		"Harvey is a Go coding assistant",
 		"Used for editing Go files and running tests.", []string{"go", "coding"})
 	doc.FountainBody = BuildFountainBody("2026-05-26 10:00:00", nil)
@@ -110,8 +111,8 @@ func TestRecall_FactualOnly(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected 1 factual result, got %d", len(results))
 	}
-	if results[0].Source != string(MemoryTypeWorkspaceProfile) {
-		t.Errorf("source: got %q, want %q", results[0].Source, MemoryTypeWorkspaceProfile)
+	if results[0].Source != string(MemoryTypeProjectFact) {
+		t.Errorf("source: got %q, want %q", results[0].Source, MemoryTypeProjectFact)
 	}
 	if results[0].Score != 1.0 {
 		t.Errorf("score: got %f, want 1.0", results[0].Score)
@@ -130,7 +131,7 @@ func TestRecall_FactualBeforeExperiential(t *testing.T) {
 	defer store.Close()
 
 	// Save one of each type.
-	wpDoc := NewMemoryDoc("wp_001", MemoryTypeWorkspaceProfile,
+	wpDoc := NewMemoryDoc("wp_001", MemoryTypeProjectFact,
 		"This is the workspace profile", "", nil)
 	wpDoc.FountainBody = BuildFountainBody("2026-05-26 10:00:00", nil)
 	if err := store.Save(wpDoc, nil); err != nil {
@@ -153,9 +154,9 @@ func TestRecall_FactualBeforeExperiential(t *testing.T) {
 		t.Fatal("expected at least one result")
 	}
 	// Factual type must come first.
-	if results[0].Source != string(MemoryTypeWorkspaceProfile) {
+	if results[0].Source != string(MemoryTypeProjectFact) {
 		t.Errorf("first result source: got %q, want %q",
-			results[0].Source, MemoryTypeWorkspaceProfile)
+			results[0].Source, MemoryTypeProjectFact)
 	}
 }
 
@@ -174,7 +175,7 @@ func TestRecall_BudgetTruncation(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		id := fmt.Sprintf("wp_%03d", i+1)
 		desc := fmt.Sprintf("workspace profile entry number %d with content", i+1)
-		doc := NewMemoryDoc(id, MemoryTypeWorkspaceProfile, desc, "", nil)
+		doc := NewMemoryDoc(id, MemoryTypeProjectFact, desc, "", nil)
 		doc.FountainBody = BuildFountainBody("2026-05-26 10:00:00", nil)
 		if err := store.Save(doc, nil); err != nil {
 			t.Fatal(err)
@@ -207,7 +208,7 @@ func TestRecall_NoBudget(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		id := fmt.Sprintf("wp_%03d", i+1)
-		doc := NewMemoryDoc(id, MemoryTypeWorkspaceProfile,
+		doc := NewMemoryDoc(id, MemoryTypeProjectFact,
 			fmt.Sprintf("profile entry %d", i+1), "", nil)
 		doc.FountainBody = BuildFountainBody("2026-05-26 10:00:00", nil)
 		if err := store.Save(doc, nil); err != nil {
@@ -234,7 +235,6 @@ func TestSourceHeader(t *testing.T) {
 		{string(MemoryTypeWorkspaceProfile), "workspace profile"},
 		{string(MemoryTypeProjectFact), "project facts"},
 		{"experiential", "relevant experience"},
-		{"rag", "knowledge"},
 		{"kb", "project knowledge"},
 		{"unknown", "unknown"},
 	}
@@ -388,6 +388,10 @@ func TestStatsCount_Empty(t *testing.T) {
 // KnowledgeBase at the workspace's default path, with a current project set.
 func newTestUnifiedMemoryWithKB(t *testing.T) (*UnifiedMemory, *knowledge.KnowledgeBase, int64) {
 	t.Helper()
+	// recallKB runs the installed kb (DR-0037 item 4).
+	if _, err := exec.LookPath("kb"); err != nil {
+		t.Skip("kb not installed")
+	}
 	ws, err := NewWorkspace(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -649,5 +653,33 @@ func TestRecallKB_FallsBackToSubstring_WhenNoConceptMatch(t *testing.T) {
 	}
 	if results[0].Score != 0.5 {
 		t.Errorf("Score = %v, want 0.5 for substring fallback", results[0].Score)
+	}
+}
+
+// Workspace profiles are retired (DR-0037): a profile file left on disk is no
+// longer injected as a factual memory, however it got there.
+func TestRecall_ALeftoverWorkspaceProfileIsNotInjected(t *testing.T) {
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewMemoryStore(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	doc := NewMemoryDoc("wp_old", MemoryTypeWorkspaceProfile, "Data Scientist — old", "from an earlier release", nil)
+	doc.FountainBody = BuildFountainBody("2026-05-26 10:00:00", nil)
+	if err := store.Save(doc, nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	results, err := NewUnifiedMemory(store, &cfg.Memory, ws).Recall("", nil, 512)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Errorf("a workspace_profile file was recalled: %+v", results)
 	}
 }

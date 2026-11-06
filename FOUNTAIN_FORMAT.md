@@ -42,7 +42,7 @@ conventions that reveal their identity and role.
 | Type | Naming Convention | Example | Identity |
 |------|-------------------|---------|----------|
 | Human User | ALL-CAPS (matches `Author:`) | RSDOIEL | Human participant |
-| Harvey Agent | **HARVEY** | HARVEY | Harvey using local Ollama/Llamafile |
+| Harvey Agent | **HARVEY** | HARVEY | Harvey using local Ollama |
 | Routed Ollama | **ROUTE_NAME** (ALL-CAPS) | PI2, NODE1, JULIE | Remote Ollama via `/route add` |
 | Cloud Model | **MODEL_NAME** (ALL-CAPS) | MISTRAL, CLAUDE, GEMMA4 | Cloud API or forwarded |
 
@@ -50,7 +50,6 @@ conventions that reveal their identity and role.
 
 **HARVEY** represents Harvey when:
 - Using its locally configured Ollama backend
-- Using its locally configured Llamafile backend
 - The active model is noted in the scene description: `Model: llama3:latest`
 
 **ROUTE_NAME** represents a remote Ollama instance when:
@@ -99,7 +98,7 @@ Harvey's response using the local model.
 ```
 
 **Use cases:**
-- Harvey responding with its local Ollama/Llamafile model
+- Harvey responding with its local Ollama model
 - Agent actions (file writes)
 - Skill activations
 - Shell command execution
@@ -572,7 +571,7 @@ Second opinion: I agree, but consider adding tests.
 ```
 
 **Note:** This scenario only applies when the models are local (e.g.
-local aliases or Llamafile models). If @mistral and @claude are
+local aliases). If @mistral and @claude are
 registered remote routes, each dispatch creates its own EXT. scene
 rather than appearing together in a single INT. scene.
 
@@ -1118,7 +1117,7 @@ in that next scene.
 ### For Session Recording (Harvey)
 
 1. **Always include** `Model:` or endpoint URL and `Workspace:` in scene descriptions
-2. **Use INT.** when computation runs locally (local Ollama, Llamafile, shell, file writes, skills)
+2. **Use INT.** when computation runs locally (local Ollama, shell, file writes, skills)
 3. **Use EXT.** when computation runs remotely (registered routes, cloud APIs)
 4. **Include HARVEY** in EXT. dialogue when Harvey is the routing intermediary; omit HARVEY only for truly direct conversations
 5. **Track @mentions**: Note unfulfilled mentions in scene description

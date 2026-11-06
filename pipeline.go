@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // confidenceInstruction is hidden-appended to every outgoing user message in a pipeline step.
@@ -138,27 +137,15 @@ func resolvePipelineClient(a *Agent, mention string) (LLMClient, error) {
 			return clientForEndpoint(ep, a.Config)
 		}
 	}
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok {
 		return nil, fmt.Errorf("pipeline: @mention %q did not resolve to a known model", mention)
 	}
 	switch ac.ProviderName() {
 	case "ollama":
-		return newOllamaLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout), nil
-	case "llamafile":
-		return newLlamafileLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout), nil
-	case "llamacpp":
-		return newLlamaCppLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout), nil
-	case "anthropic":
-		return newAnthropicLLMClient(mention)
-	case "deepseek":
-		return newDeepSeekLLMClient(mention)
-	case "gemini":
-		return newGeminiLLMClient(mention)
-	case "mistral":
-		return newMistralLLMClient(mention)
-	case "openai":
-		return newOpenAILLMClient(mention)
+		c := newOllamaLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout)
+		c.SetEngine(ac.Engine())
+		return c, nil
 	default:
 		return nil, fmt.Errorf("pipeline: @mention %q did not resolve to a known model", mention)
 	}
@@ -276,7 +263,7 @@ func runPipelineStep(
 	// Build spinner label with context percentage when available.
 	// Ollama: use the exact tokenizer API. All other backends: character estimate.
 	label := fmt.Sprintf("[%d/%d] %s", stepNum, total, filename)
-	if ac, ok := a.Client.(*AnyLLMClient); ok && len(messages) > 0 {
+	if ac, ok := a.Client.(*OllamaChatClient); ok && len(messages) > 0 {
 		var n int
 		if ac.ProviderName() == "ollama" {
 			n, _ = CountTokensFor(ctx, a.activeEngine(), ac.BackendURL(), ac.ModelName(), HistoryText(messages))
@@ -366,10 +353,6 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 	for i, s := range steps {
 		relNames[i] = s.relPath
 	}
-	userName := strings.ToUpper(os.Getenv("USER"))
-	if userName == "" {
-		userName = "OPERATOR"
-	}
 
 	ctx := context.Background()
 	var prevResponse string
@@ -377,21 +360,6 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 	for i, step := range steps {
 		stepNum := i + 1
 		filename := filepath.Base(step.relPath)
-
-		// Fountain: open a new pipeline scene for this step.
-		if a.Recorder != nil {
-			ts := time.Now().Format("2006-01-02 15:04:05")
-			heading := fmt.Sprintf("INT. PIPELINE %s STEP %d/%d %s",
-				strings.ToUpper(filename), stepNum, total, ts)
-			a.Recorder.writeSceneHeading(heading)
-			a.Recorder.writeAction(fmt.Sprintf(
-				"%s executes /pipeline %.0f%% %s.\nModel: %s. Workspace: %s.",
-				userName, threshold*100, strings.Join(relNames, " "),
-				step.client.Name(), a.Workspace.Root,
-			))
-			a.Recorder.writeNote("hidden confidence instruction appended")
-			a.Recorder.writeDialogue(userName, "", step.body)
-		}
 
 		// Build messages for this step.
 		var messages []Message
@@ -409,65 +377,26 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 				Content: prevResponse + "\n\n---\n\n" + userBody})
 		}
 
+		// The step is the author's operation: a call and a result in the log, with the
+		// model calls inside it tagged as the pipeline's.
+		callID := a.logPipelineCall(filename, stepNum, total, threshold, relNames, step.client.Name(), step.body)
+		stepCtx := withCallPurpose(ctx, "pipeline", map[string]any{"path": filename, "step": stepNum, "of": total})
 		strippedResp, score, stepErr := runPipelineStep(
-			ctx, a, step.client, messages, out,
+			stepCtx, a, step.client, messages, out,
 			stepNum, total, filename, threshold,
 		)
-
-		// Fountain: record step response.
-		if a.Recorder != nil {
-			a.Recorder.writeDialogue("HARVEY", "", strippedResp)
-			if stepErr != nil {
-				a.Recorder.writeNote(fmt.Sprintf(
-					"confidence: %.2f — threshold not met (%.2f)", score, threshold))
-			} else {
-				a.Recorder.writeNote(fmt.Sprintf("confidence: %.2f — threshold met", score))
-			}
-		}
+		a.logPipelineResult(callID, strippedResp, score, stepErr)
 
 		if stepErr != nil {
-			// Fountain: return to original scene after failure.
-			if a.Recorder != nil {
-				a.Recorder.writeTransition("CUT BACK TO:")
-				ts := time.Now().Format("2006-01-02 15:04:05")
-				a.Recorder.writeSceneHeading(fmt.Sprintf(
-					"INT. HARVEY AND %s TALKING %s", userName, ts))
-				a.Recorder.writeAction(fmt.Sprintf(
-					"Harvey and %s are in chat mode. Model: %s. Workspace: %s.",
-					userName, a.Client.Name(), a.Workspace.Root,
-				))
-				a.Recorder.writeNote(fmt.Sprintf(
-					"pipeline stopped at step %d/%d: confidence %.2f below threshold %.2f",
-					stepNum, total, score, threshold,
-				))
-			}
 			// The step ran but did not meet the bar: the answer is no.
 			return defaultClass(ClassNegative, stepErr)
-		}
-
-		// Fountain: CUT TO next step if there is one.
-		if a.Recorder != nil && stepNum < total {
-			a.Recorder.writeTransition("CUT TO:")
 		}
 
 		prevResponse = strippedResp
 	}
 
 	// All steps passed — append final response to history.
-	a.AddMessage("assistant", prevResponse)
-
-	// Fountain: return to original scene after success.
-	if a.Recorder != nil {
-		a.Recorder.writeTransition("CUT BACK TO:")
-		ts := time.Now().Format("2006-01-02 15:04:05")
-		a.Recorder.writeSceneHeading(fmt.Sprintf(
-			"INT. HARVEY AND %s TALKING %s", userName, ts))
-		a.Recorder.writeAction(fmt.Sprintf(
-			"Harvey and %s are in chat mode. Model: %s. Workspace: %s.",
-			userName, a.Client.Name(), a.Workspace.Root,
-		))
-		a.Recorder.writeDialogue("HARVEY", "", prevResponse)
-	}
+	a.addPrompt("assistant", "pipeline", prevResponse)
 
 	fmt.Fprintln(out, green("✓")+" Pipeline complete.")
 	return nil

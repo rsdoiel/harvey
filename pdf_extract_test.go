@@ -7,8 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // skipIfNoPopplerTools skips the test when any poppler utility is missing.
@@ -301,115 +299,6 @@ func (pdfMockEmbedder) Embed(text string) ([]float64, error) {
 	return vec, nil
 }
 
-func TestRagIngestPDF_integration(t *testing.T) {
-	skipIfNoPopplerTools(t)
-	pdf := testPDFPath(t)
-
-	dbPath := filepath.Join(t.TempDir(), "test_rag_pdf.db")
-	store, err := NewRagStore(dbPath, "pdf-mock")
-	if err != nil {
-		t.Fatalf("NewRagStore: %v", err)
-	}
-	defer store.Close()
-
-	n, diagrams, err := ragIngestPDF(store, pdfMockEmbedder{}, pdf, ProvenanceMeta{})
-	if err != nil {
-		t.Fatalf("ragIngestPDF: %v", err)
-	}
-	if n == 0 {
-		t.Error("expected at least one chunk ingested")
-	}
-	t.Logf("ingested %d chunk(s), %d diagram page(s): %v", n, len(diagrams), diagrams)
-
-	// Verify stored chunk count is non-zero and at most n (deduplication may
-	// reduce count below n when the PDF contains identical content chunks).
-	count, err := store.Count()
-	if err != nil {
-		t.Fatalf("Count: %v", err)
-	}
-	if count == 0 {
-		t.Error("expected at least one chunk in store")
-	}
-	if count > int64(n) {
-		t.Errorf("store.Count()=%d exceeds ingested count %d (impossible)", count, n)
-	}
-}
-
-func TestRagIngestPDF_chunkMetadata(t *testing.T) {
-	skipIfNoPopplerTools(t)
-	pdf := testPDFPath(t)
-
-	dbPath := filepath.Join(t.TempDir(), "test_rag_pdf_meta.db")
-	store, err := NewRagStore(dbPath, "pdf-mock")
-	if err != nil {
-		t.Fatalf("NewRagStore: %v", err)
-	}
-	defer store.Close()
-
-	if _, _, err := ragIngestPDF(store, pdfMockEmbedder{}, pdf, ProvenanceMeta{}); err != nil {
-		t.Fatalf("ragIngestPDF: %v", err)
-	}
-
-	// Query for something likely to appear in the Oberon spec.
-	chunks, err := store.Query("module", pdfMockEmbedder{}, 3)
-	if err != nil {
-		t.Fatalf("Query: %v", err)
-	}
-	if len(chunks) == 0 {
-		t.Fatal("expected at least one chunk from query")
-	}
-	// Every chunk must carry the PDF provenance header.
-	for i, c := range chunks {
-		if !strings.Contains(c.Content, "[PDF:") {
-			t.Errorf("chunk %d missing [PDF:] header: %q", i, c.Content[:min(80, len(c.Content))])
-		}
-		if !strings.Contains(c.Content, "page") {
-			t.Errorf("chunk %d missing page reference: %q", i, c.Content[:min(80, len(c.Content))])
-		}
-	}
-	t.Logf("top chunk: %s", chunks[0].Content[:min(120, len(chunks[0].Content))])
-}
-
-func TestRagIngestPDF_diagramPageMarker(t *testing.T) {
-	skipIfNoPopplerTools(t)
-	pdf := testPDFPath(t)
-
-	dbPath := filepath.Join(t.TempDir(), "test_rag_pdf_diag.db")
-	store, err := NewRagStore(dbPath, "pdf-mock")
-	if err != nil {
-		t.Fatalf("NewRagStore: %v", err)
-	}
-	defer store.Close()
-
-	_, diagrams, err := ragIngestPDF(store, pdfMockEmbedder{}, pdf, ProvenanceMeta{})
-	if err != nil {
-		t.Fatalf("ragIngestPDF: %v", err)
-	}
-	if len(diagrams) == 0 {
-		t.Skip("no diagram pages detected in test PDF; cannot verify marker")
-	}
-
-	// Retrieve every stored chunk and verify at least one carries the marker.
-	total, err := store.Count()
-	if err != nil {
-		t.Fatalf("Count: %v", err)
-	}
-	chunks, err := store.Query("diagram", pdfMockEmbedder{}, int(total))
-	if err != nil {
-		t.Fatalf("Query: %v", err)
-	}
-	found := false
-	for _, c := range chunks {
-		if strings.Contains(c.Content, "DIAGRAM PAGE") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("expected at least one stored chunk to contain the DIAGRAM PAGE marker")
-	}
-}
-
 func TestCmdReadPDF_integration(t *testing.T) {
 	skipIfNoPopplerTools(t)
 	pdf := testPDFPath(t)
@@ -566,9 +455,9 @@ func TestAttachDetectMIME_png(t *testing.T) {
 
 func TestAddMessageParts_roundtrip(t *testing.T) {
 	a := newTestAgent(t)
-	parts := []anyllm.ContentPart{
+	parts := []ContentPart{
 		{Type: "text", Text: "[attached: img.png]"},
-		{Type: "image_url", ImageURL: &anyllm.ImageURL{URL: "data:image/png;base64,abc"}},
+		{Type: "image_url", ImageURL: &ImageURL{URL: "data:image/png;base64,abc"}},
 	}
 	a.AddMessageParts("user", parts)
 	if len(a.History) != 1 {
@@ -581,12 +470,9 @@ func TestAddMessageParts_roundtrip(t *testing.T) {
 	if len(msg.Parts) != 2 {
 		t.Errorf("parts len = %d, want 2", len(msg.Parts))
 	}
-	// harvestMessagesToAnyllm should pass Parts as Content.
-	anyllmMsgs := harvestMessagesToAnyllm(a.History)
-	if anyllmMsgs[0].ContentString() != "" {
-		t.Error("expected empty ContentString when Parts are set")
-	}
-	if anyllmMsgs[0].ContentParts() == nil {
-		t.Error("expected ContentParts to be non-nil")
+	// The wire conversion turns the image part into an images entry.
+	wire := toWireMessages(a.History)
+	if len(wire[0].Images) == 0 {
+		t.Error("expected the image part to be sent in images")
 	}
 }

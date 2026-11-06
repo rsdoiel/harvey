@@ -6,7 +6,7 @@
 Harvey uses a **workspace-local configuration system**. All configuration
 files live inside the workspace — the directory where Harvey is launched.
 A HARVEY.md file in the workspace root provides the system prompt, and
-environment variables supply cloud provider API keys.
+environment variables supply the few credentials harvey reads.
 
 ### Configuration Sources
 
@@ -27,7 +27,7 @@ environment variables supply cloud provider API keys.
 ### 1. Configuration (`<workspace>/agents/harvey.yaml`)
 
 **Purpose:** Workspace-level configuration for Harvey's subsystems: knowledge
-base, sessions, skills, RAG stores, and model cache.
+base, sessions, skills, and model cache.
 
 **Locations:** Workspace: `<workspace>/agents/harvey.yaml`
 
@@ -54,23 +54,6 @@ auto_record: true
 # Model capability cache
 model_cache_db: "agents/model_cache.db"
 
-# RAG configuration
-rag:
-  enabled: true
-  active: "default"
-  stores:
-    - name: "default"
-      db_path: "agents/rag/default.db"
-      embedding_model: "nomic-embed-text"
-      model_map:
-        "llama3.1:latest": "nomic-embed-text"
-        "granite-code:3b": "nomic-embed-text"
-        "mistral:latest": "nomic-embed-text"
-    - name: "deno_typescript"
-      db_path: "agents/rag/deno_typescript.db"
-      embedding_model: "nomic-embed-text"
-      model_map:
-        "llama3.1:latest": "nomic-embed-text"
 ```
 
 **Top-Level Fields:**
@@ -90,125 +73,17 @@ rag:
 | `allowed_commands` | string list | No | See Security section | Commands allowed when `safe_mode` is true |
 | `permissions` | object | No | Full access | Path-prefix permission map |
 | `model_aliases` | object | No | `{}` | Short name → full model identifier map |
-| `llamafile` | object | No | See below | Llamafile backend configuration |
-| `llamacpp` | object | No | See below | llama.cpp (`llama-server`) backend configuration |
 | `tools` | object | No | See below | Tool-calling behaviour |
-| `memory` | object | No | See below | Memory system and RAG configuration |
+| `memory` | object | No | See below | Memory system configuration |
 
-**RAG Configuration (`rag:`):**
+**Removed: RAG (`memory.rag:`).** `/rag` was removed (workspace DR-0035); retrieval over documents is the knowledge
+base (`kb document ingest`, then `/kb search`). A `harvey.yaml` whose `memory.rag:` section names an active store or turns
+RAG on fails to load with a configuration error (exit 78); one that only lists stores loads with a note, and the section is
+dropped the next time the configuration is saved. The store files stay on disk.
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `enabled` | boolean | No | `false` | Whether RAG is enabled |
-| `active` | string | No | `""` | Name of active RAG store |
-| `stores` | array | No | `[]` | Array of named RAG stores |
-
-**RAG Store Fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Unique store identifier |
-| `db_path` | string | Yes | Path to SQLite database file |
-| `embedding_model` | string | Yes | Embedding model name (e.g., `nomic-embed-text`) |
-| `model_map` | object | No | Mapping of generation model → embedding model |
-| `embedder_kind` | string | No | `"ollama"` | Either `"ollama"` or `"encoderfile"` |
-| `embedder_url` | string | No | Base URL for encoderfile embedder |
-| `per_prompt` | boolean | No | `true` | When `false`, skips automatic RAG injection each turn; the model uses `retrieve_memory` instead |
-
-**Important Notes:**
-- Paths are relative to the workspace root
-- The `model_map` ensures each generation model uses the correct embedding model
-- Embedding model binding is enforced: you cannot mix embeddings from different models in the same store
-- Set `per_prompt: false` on the active store when using the `retrieve_memory` tool — this avoids redundant per-turn retrieval and lets the model decide when to fetch context
-
-**Llamafile Backend (`llamafile:`):**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `models_dir` | string | No | `~/Models` | Directory scanned for `.llamafile` executables |
-| `active` | string | No | `""` | Name of the registered model to connect at startup |
-| `url` | string | No | `http://localhost:8080` | API base URL for the llamafile server |
-| `gpu_layers` | integer | No | `99` | Transformer layers to offload via `-ngl`; `99` = maximise GPU, `-1` = CPU only |
-| `startup_timeout` | string | No | `120s` | How long to wait for the server to become ready |
-| `models` | array | No | `[]` | Registered llamafile model entries |
-
-**Llamafile Model Entry Fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Short identifier used by `/model use` and `@mention` |
-| `path` | string | Yes | Absolute or `~/`-relative path to the `.llamafile` executable |
-| `context_length` | integer | No | Context window in tokens; probed from the server when omitted |
-
-`context_length` is used for the rolling-summary trigger and context-utilisation hints.
-When omitted Harvey probes the server's `/v1/models` endpoint at startup and caches
-the result in memory (not persisted to `harvey.yaml`). Set it explicitly when the
-probe is unavailable or you want a fixed value.
-
-```yaml
-llamafile:
-  models_dir: ~/Models
-  active: qwen-coding
-  url: http://localhost:8080
-  gpu_layers: 99
-  startup_timeout: 120s
-  models:
-    - name: qwen-coding
-      path: ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
-      context_length: 32768
-    - name: phi-mini
-      path: ~/Models/Phi-3.5-mini-instruct-Q4_K_M.llamafile
-```
-
-**llama.cpp Backend (`llamacpp:`):**
-
-Harvey starts and talks to a `llama-server` process (from [llama.cpp](https://github.com/ggml-org/llama.cpp))
-and lists the `.gguf` model files it finds in a directory. Every field is optional; an empty
-`llamacpp:` section, or none at all, uses the defaults below.
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `server_bin` | string | No | `llama-server` | Path to the `llama-server` binary; the default is looked up on `PATH` |
-| `models_dir` | string | No | llama.cpp's cache (see below) | Directory scanned for `*.gguf` model files; `~/` is expanded |
-| `url` | string | No | `http://127.0.0.1:8081` | API base URL of the server |
-| `ctx_size` | integer | No | `0` | `--ctx-size` passed to `llama-server`; `0` = the server's default |
-| `threads` | integer | No | `0` | `--threads`; `0` = the server's default |
-| `gpu_layers` | integer | No | unset | `--n-gpu-layers`; `0` or unset = CPU only |
-| `pin_cpu` | boolean | No | `false` | Launch under `taskset -c 0-(threads-1)`; ignored when `threads` is `0` or `taskset` is missing |
-| `start_timeout` | string | No | `120s` | How long to wait for the server to answer after launch |
-
-**Where models are found.** When `models_dir` is not set, Harvey scans the directory
-llama.cpp itself downloads models into (`llama-server -hf …`), taking the first of:
-
-1. `$LLAMA_CACHE`
-2. `$XDG_CACHE_HOME/llama.cpp`
-3. `~/.cache/llama.cpp`
-
-The directory need not exist; a missing directory simply lists no models. `~/Models` is
-**not** scanned for llama.cpp: that directory belongs to the llamafile backend, which
-looks there for `.llamafile` executables only. To use `.gguf` files you keep elsewhere,
-set `models_dir`.
-
-> **Not yet verified.** Discovery is a directory scan only. Harvey does not ask
-> `llama-server --cache-list` or a running server's `/models` endpoint what it has, so
-> a model that llama.cpp resolves through some other store (for example the Hugging Face
-> hub cache, `~/.cache/huggingface/hub`) is not listed. This is tracked as an open
-> question in the v0.0.19 hand-off.
-
-`/model` commands label each model with its engine, so a `.gguf` file here shows as
-`llamacpp` and is kept apart from Ollama and llamafile entries.
-
-```yaml
-llamacpp:
-  server_bin: llama-server        # PATH lookup; give a full path to pin a build
-  models_dir: ~/Models/gguf       # omit to use $LLAMA_CACHE or ~/.cache/llama.cpp
-  url: http://127.0.0.1:8081
-  ctx_size: 8192
-  threads: 4
-  gpu_layers: 0                   # CPU only
-  pin_cpu: true                   # taskset -c 0-3
-  start_timeout: 180s
-```
+**Removed backends.** llama.cpp and llamafile were removed (workspace DR-0033). A `harvey.yaml` that still
+has a `llamafile:` or `llamacpp:` section fails to load with a configuration error (exit 78); delete the
+section. Harvey supports Ollama and hailo-ollama.
 
 **Security Configuration:**
 
@@ -225,6 +100,28 @@ Security fields are persisted by the `/safemode`, `/permissions`, and related co
 **Timeout format** (`run_timeout`, `ollama_timeout`): Go duration string or plain
 integer seconds. Examples: `"5m"`, `"300"`, `"1m30s"`. `ollama_timeout` should be
 left unset for local hardware where inference can take several minutes.
+
+**Context window** (`ollama.context_length`, `ollama.max_context`): the window harvey
+budgets against is the number it asks Ollama to allocate (`num_ctx`), and a model's
+trained maximum is often more than a small machine can hold. `llama3.2:3b` and
+`granite4` train at 131,072 tokens, which is 14 GiB of cache for `llama3.2:3b`, and
+on a 16 GB Pi the kernel killed Ollama's `llama-server` when harvey asked for it.
+When a model is selected, at startup and at every switch, harvey works out the
+largest window whose weights and cache fit in 60% of the memory then available
+(on Linux, `MemAvailable`), capped by the model's own window and by a ceiling of
+32,768 tokens, and keeps that number for the session. It says so when the result is
+below the model's maximum, and `/status` shows it. Where memory cannot be read
+(not Linux) or the model does not report its size, only the ceiling applies.
+
+```yaml
+ollama:
+  max_context: 16384      # lower the ceiling (default 32768); also caps a computed window
+  context_length: 8192    # or set the window yourself; harvey uses it as given
+```
+
+An explicit `context_length` is honoured, with a warning when it is more than memory is
+estimated to hold. The estimate assumes Ollama's default f16 cache. See
+`agents/projects/harvey/design/memory-aware-context-window-design.md`.
 
 **`permissions` map** — keys are path prefixes relative to the workspace root;
 values are lists of allowed actions (`read`, `write`, `exec`, `delete`).
@@ -250,7 +147,7 @@ Short names that expand to full model identifiers in `@mention` switching and
 ```yaml
 model_aliases:
   coder: qwen2.5-coder:7b
-  phi: phi-mini          # registered llamafile name
+  phi: phi4:latest
   claude: claude-sonnet-4-6
 ```
 
@@ -273,25 +170,27 @@ tools:
 
 **Memory System (`memory:`):**
 
-Controls Harvey's three-silo memory architecture: experience memories, RAG
-retrieval, and knowledge base. The `memory:` block in `harvey.yaml` also houses
-RAG store configuration (previously at the top level as `rag:`; old single-store
-`rag:` configs are automatically migrated on first load).
+Controls the memory store (deprecated, workspace DR-0037: it will be removed in a
+following release) and where recalled knowledge comes from. Recall for the prompt
+already reads the knowledge base through the installed `kb`; `kb` must be on
+`PATH`. The store's own settings (`enabled`, `top_k`, `inject_on_start`) stop having
+effect at the removal; `budget_pct` and `knowledge_base.path` stay.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `enabled` | boolean/null | No | `true` | Enable the memory system at session start |
-| `top_k` | integer | No | `5` | Number of experience memories retrieved at session start |
-| `inject_on_start` | boolean/null | No | `true` | Inject memory context block into history on start |
-| `budget_pct` | float | No | `0.25` | Fraction of context window reserved for memory injection |
+| `enabled` | boolean/null | No | `true` | Enable the memory store at session start (deprecated) |
+| `top_k` | integer | No | `5` | Number of experience memories retrieved at session start (deprecated) |
+| `inject_on_start` | boolean/null | No | `true` | Inject recalled context into history on start |
+| `budget_pct` | float | No | `0.25` | Fraction of the active model's context window for recalled knowledge (512 tokens when the window is unknown) |
 | `rolling_summary` | object | No | See below | Automatic working-memory compression settings |
-| `rag` | object | No | See RAG section | RAG stores (nested here in v0.0.14+) |
 | `knowledge_base.path` | string | No | `"agents/knowledge.db"` | Path to the SQLite knowledge base |
 
 **Rolling Summary (`memory.rolling_summary:`):**
 
-When history token count exceeds `warn_at_pct` of the model's context window,
-Harvey compresses all but the last `keep_turns` turns into a short summary.
+Not part of the memory store: the context assembler owns it (workspace DR-0036). When
+the prompt passes `warn_at_pct` of the model's prompt limit after a reply, Harvey has
+the active model summarise all but the last `keep_turns` turns into one summary that
+names the events it replaces.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -311,13 +210,6 @@ memory:
     keep_turns: 6
   knowledge_base:
     path: agents/knowledge.db
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: agents/rag/golang.db
-        embedding_model: nomic-embed-text
 ```
 
 **Behaviour Fields (`syntax_highlight`, `auto_format`):**
@@ -341,21 +233,10 @@ agents_dir: agents
 model_cache_db: agents/model_cache.db
 auto_record: true
 
-# Llamafile backend (primary)
-llamafile:
-  models_dir: ~/Models
-  active: qwen-coding
-  startup_timeout: 120s
-  gpu_layers: 99
-  models:
-    - name: qwen-coding
-      path: ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
-      context_length: 32768
-
 # Model short-name aliases
 model_aliases:
-  coder: qwen-coding
-  phi: phi-mini
+  coder: qwen2.5-coder:7b
+  phi: phi4:latest
 
 # Behaviour
 syntax_highlight: true
@@ -385,13 +266,6 @@ memory:
     enabled: true
     warn_at_pct: 0.80
     keep_turns: 6
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: agents/rag/golang.db
-        embedding_model: nomic-embed-text
 ```
 
 ### 2. Route configuration (`<workspace>/agents/routes.json`)
@@ -413,12 +287,6 @@ sessions.
       "url": "ollama://192.0.2.12:11434",
       "model": "llama3.1:8b",
       "kind": "ollama"
-    },
-    {
-      "name": "claude",
-      "url": "anthropic://",
-      "model": "claude-3-haiku",
-      "kind": "anthropic"
     },
     {
       "name": "pi3",
@@ -444,7 +312,7 @@ sessions.
 | `name` | string | Yes | Unique identifier for the endpoint |
 | `url` | string | Yes | URL including scheme (e.g., `ollama://host:port`) |
 | `model` | string | No | Default model to use with this endpoint |
-| `kind` | string | No | Inferred from URL scheme | One of: `ollama`, `llamafile`, `llamacpp`, `anthropic`, `deepseek`, `gemini`, `mistral`, `openai` |
+| `kind` | string | No | Inferred from URL scheme | Only `ollama`. The `llamafile`, `llamacpp` and cloud kinds were removed (DR-0033, DR-0042); such an endpoint is skipped on load |
 
 **URL Schemes:**
 
@@ -453,13 +321,6 @@ sessions.
 | `ollama://host:port` | ollama | Ollama server | Local or remote |
 | `http://host:port` | ollama | Ollama server | HTTP (insecure) |
 | `https://host:port` | ollama | Ollama server | HTTPS (secure) |
-| `llamafile://host:port` | llamafile | Llamafile server | OpenAI-compatible |
-| `llamacpp://host:port` | llamacpp | llama.cpp server | OpenAI-compatible |
-| `anthropic://` | anthropic | Anthropic Claude | Uses `ANTHROPIC_API_KEY` |
-| `deepseek://` | deepseek | DeepSeek API | Uses `DEEPSEEK_API_KEY` |
-| `gemini://` | gemini | Google Gemini | Uses `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
-| `mistral://` | mistral | Mistral API | Uses `MISTRAL_API_KEY` |
-| `openai://` | openai | OpenAI API | Uses `OPENAI_API_KEY` |
 
 **Commands:**
 - `/route add NAME URL [MODEL]` — Register a new endpoint
@@ -537,7 +398,7 @@ Hailo's `hef` format on a server Harvey was not told is Hailo is held to the sam
 row once it is probed. Embeddings always use `ollama.url`. When one fails on a machine where Hailo is in
 use and Ollama is not there, the error says so plainly (`Hailo cannot embed; no
 Ollama at http://localhost:11434`, or, when `ollama.url` is itself the Hailo
-server, how to separate the two URLs). The per-prompt RAG lookup reports that failure too, once per session (once per distinct cause), and the prompt goes on without retrieved context. On a machine with a card whose server is
+server, how to separate the two URLs). On a machine with a card whose server is
 not running, start-up prints one line, `AI HAT+ 2 found, hailo-ollama is not
 running at URL`, with `systemctl --user start hailo-ollama` when
 `~/.config/systemd/user/hailo-ollama.service` exists. Harvey does not start the
@@ -555,7 +416,7 @@ and DR-0030.
 ## Available Tools
 
 You have access to the following slash commands: /read, /write, /run, /search,
-/git, /clear, /summarize, /context, /kb, /rag, /model, /route, /skill.
+/git, /clear, /summarize, /context, /kb, /model, /route, /skill.
 
 ## Rules
 
@@ -574,42 +435,27 @@ You have access to the following slash commands: /read, /write, /run, /search,
 
 **Notes:**
 - The prompt is re-injected after `/clear`
-- Pinned context (from `/context add`) is injected after the system prompt
+- Pins (from `/pin`) is injected after the system prompt
 - The skills catalog is not in the prompt by default; set `skills: catalog: full` in `agents/harvey.yaml` to add it (about 180 characters per skill)
-- **Cloud privacy:** When a cloud route (`@claude`, `@openrouter`, etc.) is
-  active, HARVEY.md is sent to the remote provider verbatim. Avoid hardcoding
-  absolute local paths in HARVEY.md. Use the `<!-- @files -->` dynamic marker
-  instead — it injects a workspace-relative file tree without exposing your
-  home directory layout.
+- **Remote servers:** When a route to another machine is active, HARVEY.md is
+  sent to that server verbatim. Avoid hardcoding absolute local paths in
+  HARVEY.md. Use the `<!-- @files -->` dynamic marker instead — it injects a
+  workspace-relative file tree without exposing your home directory layout.
 
 
 ## Environment Variables
 
-Harvey reads environment variables for cloud provider API keys. These are
-optional and only needed when using the corresponding route types.
+Harvey reads no model-provider API keys. These variables are optional.
 
 | Variable | Provider | Route Scheme | Purpose |
 |----------|----------|--------------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic | `anthropic://` | Claude API key |
-| `DEEPSEEK_API_KEY` | DeepSeek | `deepseek://` | DeepSeek API key |
-| `GEMINI_API_KEY` | Google | `gemini://` | Gemini API key (primary) |
-| `GOOGLE_API_KEY` | Google | `gemini://` | Gemini API key (fallback) |
-| `MISTRAL_API_KEY` | Mistral | `mistral://` | Mistral API key |
-| `OPENAI_API_KEY` | OpenAI | `openai://` | OpenAI API key |
-| `OLLAMA_HOST` | Ollama | `ollama://` | Ollama server host (default: `localhost`) |
 | `OLLAMA_ORIGINS` | Ollama | `ollama://` | CORS origins for Ollama |
 | `OLLAMA_KEEP_ALIVE` | Ollama | `ollama://` | Keep-alive interval (default: `24h`) |
-| `HARVEY_LLAMAFILE_DIR` | Llamafile | — | Override the llamafile discovery directory (takes precedence over `llamafile.models_dir` in `harvey.yaml`) |
-| `LLAMA_CACHE` | llama.cpp | — | Directory scanned for `.gguf` files when `llamacpp.models_dir` is not set (llama.cpp's own variable; takes precedence over `XDG_CACHE_HOME`) |
-| `XDG_CACHE_HOME` | llama.cpp | — | When `LLAMA_CACHE` is unset, `.gguf` files are scanned in `$XDG_CACHE_HOME/llama.cpp` |
-| `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/rag ingest sftp://…`) |
+| `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/read sftp://…`) |
 | `SFTP_KEY_PATH` | SFTP/SCP | `sftp://` `scp://` | Path to SSH private key for SFTP/SCP remote ingest |
 | `HTTP_BEARER_TOKEN` | HTTP/HTTPS | `http://` `https://` | Bearer token for authenticated HTTP remote ingest |
 | `HTTP_BASIC_USER` | HTTP/HTTPS | `http://` `https://` | Username for HTTP Basic Auth remote ingest |
 | `HTTP_BASIC_PASSWORD` | HTTP/HTTPS | `http://` `https://` | Password for HTTP Basic Auth remote ingest |
-| `AWS_ACCESS_KEY_ID` | S3 | `s3://` | AWS access key for S3 remote ingest |
-| `AWS_SECRET_ACCESS_KEY` | S3 | `s3://` | AWS secret key for S3 remote ingest |
-| `AWS_ENDPOINT_URL` | S3 | `s3://` | S3-compatible endpoint URL (MinIO, Cloudflare R2, etc.) |
 
 **Security:** All API keys and credential environment variables are stripped from
 the environment of every child process started by `!` or `/run`. They are never
@@ -634,35 +480,12 @@ harvey
 harvey
 > /route on
 
-# 3. Configure RAG (optional)
-harvey
-> /rag new golang
-harvey
-> /rag use golang
-harvey
-> /rag on
-
-# 4. Create workspace-specific config
+# 3. Create workspace-specific config
 mkdir -p myproject/agents
 echo 'knowledge_db: myproject/agents/knowledge.db' > myproject/agents/harvey.yaml
 
-# 5. Run Harvey in the project
+# 4. Run Harvey in the project
 harvey -w myproject
-```
-
-### Configuration File Precedence Example
-
-```
-Workspace (myproject/agents/harvey.yaml):
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: myproject/agents/rag/golang.db
-        embedding_model: nomic-embed-text
-
-Result: In myproject/, the golang store is active.
 ```
 
 ## Troubleshooting
@@ -684,11 +507,6 @@ Result: In myproject/, the golang store is active.
 - Check `agents/model_cache.db` exists
 - Save an alias for a model in `/model use`; that probes an Ollama model and fills the cache
 
-**"RAG store not found"**
-- Run `/rag new NAME` to create a store
-- Run `/rag use NAME` to activate it
-- Verify the database file exists at the specified path
-
 ### Verification Commands
 
 > **Reminder:** Add `agents/` to `.gitignore` before committing. These files
@@ -706,9 +524,6 @@ sqlite3 agents/knowledge.db ".tables"
 
 # Check model cache
 sqlite3 agents/model_cache.db "SELECT count(*) FROM models;"
-
-# Check RAG stores
-ls -la agents/rag/*.db
 ```
 
 ## Reference: All Configuration Options
@@ -742,33 +557,10 @@ auto_record: true          # false to disable session auto-recording
 syntax_highlight: true     # false to disable ANSI colour in code blocks
 auto_format: true          # false to disable auto-formatting after write_file
 
-# ── Llamafile backend ─────────────────────────────────────────────────────────
-llamafile:
-  models_dir: ~/Models            # discovery directory; $HOME/Models is the default
-  active: qwen-coding             # name of the active registered model
-  url: http://localhost:8080      # API base URL; this is the default
-  gpu_layers: 99                  # -ngl value; 99 = maximise GPU, -1 = CPU only
-  startup_timeout: 120s           # time to wait for the server to become ready
-  models:
-    - name: qwen-coding
-      path: ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
-      context_length: 32768       # optional; probed from server when omitted
-
-# ── llama.cpp backend ─────────────────────────────────────────────────────────
-llamacpp:
-  server_bin: llama-server        # PATH lookup by default
-  models_dir: ~/Models/gguf       # default: $LLAMA_CACHE, $XDG_CACHE_HOME/llama.cpp, ~/.cache/llama.cpp
-  url: http://127.0.0.1:8081      # this is the default
-  ctx_size: 8192                  # --ctx-size; 0 = server default
-  threads: 4                      # --threads; 0 = server default
-  gpu_layers: 0                   # --n-gpu-layers; 0 or unset = CPU only
-  pin_cpu: false                  # taskset -c 0-(threads-1); needs threads > 0
-  start_timeout: 120s             # time to wait for the server to answer
-
 # ── Model aliases ─────────────────────────────────────────────────────────────
 model_aliases:
-  coder: qwen2.5-coder:7b         # short name → full Ollama model ID or llamafile name
-  phi: phi-mini
+  coder: qwen2.5-coder:7b         # short name → full Ollama model ID
+  phi: phi4:latest
 
 # ── Security ──────────────────────────────────────────────────────────────────
 safe_mode: true
@@ -793,6 +585,38 @@ permissions:
 # small, cheap model is usually enough for drafting because a human accepts
 # or edits every draft before it is trusted.
 learn_model: granite
+
+# ── Drafting observations from a session (/kb draft) ──────────────────────────
+draft:
+  # The model /kb draft drafts with: "service/model" (for example
+  # hailo/qwen2.5-coder:1.5b, or ollama/llama3.2:3b) or a bare model name that
+  # only one service has. Unset means the model the session is using. An @name
+  # on the command beats it for one run. If the service it names is not
+  # running, /kb draft stops and says which (exit 69); it never drafts with
+  # another model instead.
+  # At start-up harvey warns, once, if the service it names does not have the
+  # model; chat still starts.
+  model: hailo/qwen2.5-coder:1.5b
+
+# ── Further model services (DR-0049; read and checked, not yet used) ──────────
+# The two default services, "ollama" (ollama.url) and "hailo" (hailo.url), need
+# no entry. A service beyond them has a name, a URL and an engine kind (ollama
+# or hailo); the kind is declared, never guessed from the port. A name cannot
+# be "ollama" or "hailo", contain a slash, or repeat another ignoring case.
+# A wrong entry stops harvey at start-up (exit 78). Harvey does not yet send
+# anything to these services; naming one in service/model comes next.
+services:
+  hat2:
+    url: http://pi2.lan:8000
+    engine: hailo
+
+# ── How harvey uses the installed kb ─────────────────────────────────────────
+kb:
+  # The kb project /kb draft attaches drafts to when --project is not given.
+  # Without it, /kb draft uses the workspace directory's name if a kb project
+  # has it, and otherwise stops and lists the projects. (~/Laboratory holds many
+  # projects, so set this when you work on one project most of the time.)
+  project: harvey
 
 # ── Chunked document analysis ────────────────────────────────────────────────
 chunking:
@@ -826,30 +650,18 @@ tools:
 # ── Memory system ─────────────────────────────────────────────────────────────
 memory:
   enabled: true
-  top_k: 5                        # experience memories retrieved at session start
+  top_k: 5                        # experience memories retrieved at session start (deprecated)
   inject_on_start: true
-  budget_pct: 0.25                # fraction of context window reserved for memory
+  budget_pct: 0.25                # fraction of the model's context window for recalled knowledge
   rolling_summary:
     enabled: true
     warn_at_pct: 0.80             # compression triggers at 80% context usage
     keep_turns: 6                 # recent turns kept verbatim after compression
   knowledge_base:
     path: agents/knowledge.db
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: agents/rag/golang.db
-        embedding_model: nomic-embed-text
-        model_map:
-          qwen2.5-coder:7b: nomic-embed-text
-        embedder_kind: ollama     # or "encoderfile" for a local encoderfile binary
-        embedder_url: ""          # base URL when embedder_kind = "encoderfile"
 ```
 
 *For more details on specific subsystems, see:*
 - [ROUTING.md](ROUTING.md) — Remote endpoint routing
 - [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) — Knowledge base schema
-- [RAG_Support_Design.md](RAG_Support_Design.md) — RAG implementation details
 - [SESSIONS.md](SESSIONS.md) — Session recording format

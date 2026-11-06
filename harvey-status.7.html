@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -26,15 +25,16 @@
 <h1 id="description">DESCRIPTION</h1>
 <p>/status prints a snapshot of the active Harvey session. It is the
 fastest way to confirm what model you are talking to, how full the
-context window is, and whether optional subsystems (RAG, routing,
-recording) are active.</p>
+context window is, and whether optional subsystems (routing, recording)
+are active.</p>
 <h1 id="output-fields">OUTPUT FIELDS</h1>
 <p>Backend The active LLM provider and model name, e.g. “ollama
 (gemma4:e2b)”. When the Ollama backend was started by Harvey this
 session the tag [Harvey] is appended. When Ollama was already running
 before Harvey connected the tag [external] is appended.</p>
-<p>Debug Shown only when Harvey was started with –debug. Prints the path
-of the JSONL diagnostic log file being written this session.</p>
+<p>Debug Shown only when Harvey was started with –debug. Names the
+session log (agents/sessions/NAME.jsonl) that the level-debug events are
+written to.</p>
 <p>History Number of messages in the current conversation history (all
 roles).</p>
 <p>Tokens Estimated token count for the current history, the model’s

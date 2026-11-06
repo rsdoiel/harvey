@@ -2,82 +2,11 @@ package harvey
 
 import (
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 // ─── /model list — all backends ───────────────────────────────────────────────
-
-// TestCmdModelList_ShowsLlamafileEntries verifies that /model list prints
-// llamafile models found in the Llamafile models directory.
-func TestCmdModelList_ShowsLlamafileEntries(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "bonsai-8b.llamafile"), []byte("stub"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	a := newTestAgent(t)
-	a.Config.Llamafile.ModelsDir = dir
-
-	var out strings.Builder
-	if err := cmdModelList(a, &out); err != nil {
-		t.Fatalf("cmdModelList: %v", err)
-	}
-	if !strings.Contains(out.String(), "bonsai-8b") {
-		t.Errorf("expected 'bonsai-8b' in output, got:\n%s", out.String())
-	}
-}
-
-// TestCmdModelList_ShowsGGUFEntries verifies that /model list prints .gguf
-// models found in the LlamaCpp models directory.
-func TestCmdModelList_ShowsGGUFEntries(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "smollm3.gguf"), []byte("stub"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	a := newTestAgent(t)
-	a.Config.LlamaCpp.ModelsDir = dir
-
-	var out strings.Builder
-	if err := cmdModelList(a, &out); err != nil {
-		t.Fatalf("cmdModelList: %v", err)
-	}
-	if !strings.Contains(out.String(), "smollm3") {
-		t.Errorf("expected 'smollm3' in output, got:\n%s", out.String())
-	}
-}
-
-// TestCmdModelList_ShowsEngineLabels verifies that each entry is labelled with
-// its backend engine so the user can distinguish llamafile from llamacpp.
-func TestCmdModelList_ShowsEngineLabels(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "phi4.gguf"), []byte("stub"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Listing is a disk scan of ModelsDir, so the llamafile must exist there.
-	if err := os.WriteFile(filepath.Join(dir, "phi4.llamafile"), []byte("stub"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	a := newTestAgent(t)
-	a.Config.LlamaCpp.ModelsDir = dir
-	a.Config.Llamafile.ModelsDir = dir
-
-	var out strings.Builder
-	if err := cmdModelList(a, &out); err != nil {
-		t.Fatalf("cmdModelList: %v", err)
-	}
-	if !strings.Contains(out.String(), "llamafile") {
-		t.Errorf("expected 'llamafile' label in output, got:\n%s", out.String())
-	}
-	if !strings.Contains(out.String(), "llamacpp") {
-		t.Errorf("expected 'llamacpp' label in output, got:\n%s", out.String())
-	}
-}
 
 // ─── /model clean — all backends ─────────────────────────────────────────────
 
@@ -91,7 +20,7 @@ func TestCmdModelClean_RemovesStaleOllamaAlias(t *testing.T) {
 	}
 
 	liveOllama := []string{"installed:8b"}
-	n, err := pruneStaleModelRefs(a, liveOllama, nil, nil, nil, io.Discard)
+	n, err := pruneStaleModelRefs(a, liveOllama, nil, io.Discard)
 	if err != nil {
 		t.Fatalf("pruneStaleModelRefs: %v", err)
 	}
@@ -106,28 +35,6 @@ func TestCmdModelClean_RemovesStaleOllamaAlias(t *testing.T) {
 	}
 }
 
-// TestCmdModelClean_RemovesStaleLlamafileAlias verifies that /model clean also
-// prunes aliases pointing to llamafile models that are no longer on disk.
-func TestCmdModelClean_RemovesStaleLlamafileAlias(t *testing.T) {
-	a := newTestAgent(t)
-	a.Config.ModelAliases = map[string]ModelAlias{
-		"missing": {Model: "gone-model", Engine: "llamafile"},
-		"present": {Model: "bonsai-8b", Engine: "llamafile"},
-	}
-
-	liveLlamafile := []string{"bonsai-8b"}
-	n, err := pruneStaleModelRefs(a, nil, liveLlamafile, nil, nil, io.Discard)
-	if err != nil {
-		t.Fatalf("pruneStaleModelRefs: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("expected 1 removal, got %d", n)
-	}
-	if _, ok := a.Config.ModelAliases["missing"]; ok {
-		t.Error("alias 'missing' should have been removed")
-	}
-}
-
 // TestCmdModelClean_PreservesLegacyAliasWithNoEngine verifies that aliases
 // with Engine=="" (legacy hand-written entries) are never pruned — we cannot
 // determine which backend they belong to without engine info.
@@ -137,7 +44,7 @@ func TestCmdModelClean_PreservesLegacyAliasWithNoEngine(t *testing.T) {
 		"legacy": {Model: "some-model", Engine: ""}, // no engine — unknown provenance
 	}
 
-	n, err := pruneStaleModelRefs(a, nil, nil, nil, nil, io.Discard)
+	n, err := pruneStaleModelRefs(a, nil, nil, io.Discard)
 	if err != nil {
 		t.Fatalf("pruneStaleModelRefs: %v", err)
 	}

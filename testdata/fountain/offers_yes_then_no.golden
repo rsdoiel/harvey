@@ -1,0 +1,60 @@
+Title: Harvey Session
+Credit: Recorded by Harvey
+Author: TESTER
+Date: <ts>
+Draft date: <date>
+Model: LLAMA3.2 (ollama)
+Backend: ollama
+
+
+FADE IN:
+
+
+INT. HARVEY AND TESTER TALKING <ts>
+
+Harvey and TESTER are in chat mode. Model: LLAMA3.2. Workspace: <ws>.
+
+TESTER
+make two files
+
+HARVEY
+Forwarding to LLAMA3.2.
+
+LLAMA3.2
+Here are two files.
+
+```text:out/a.txt
+alpha
+```
+
+```text:out/b.txt
+beta
+```
+
+ollama (llama3.2:3b) · 1 reply + 7 ctx · <dur> · <rate> tok/s
+
+
+
+INT. AGENT MODE <ts>
+
+HARVEY
+Harvey proposes to write 2 file(s).
+
+HARVEY
+Write out/a.txt?
+
+TESTER
+yes
+
+[[write: out/a.txt — ok]]
+
+HARVEY
+Write out/b.txt?
+
+TESTER
+no
+
+[[write: out/b.txt — skipped]]
+
+
+THE END.

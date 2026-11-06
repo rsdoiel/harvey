@@ -1,6 +1,5 @@
 // Package harvey — model_picker.go implements the unified /model use picker
-// that aggregates all locally available models across llamafile, llama.cpp,
-// and Ollama backends.
+// that aggregates all locally available models across Ollama and hailo-ollama.
 package harvey
 
 import (
@@ -12,15 +11,14 @@ import (
 )
 
 /** aggregateModels collects all locally available models across all backends.
- * Llamafile and llama.cpp models are discovered by scanning their model
- * directories. Ollama models are queried live only when Ollama is reachable;
+ * Ollama models are queried live only when Ollama is reachable;
  * when Ollama is down no error is returned and its models are simply absent.
  *
  * Parameters:
  *   a (*Agent) — the running Harvey agent.
  *
  * Returns:
- *   []ModelSummary — all models found, backends in order: llamafile, llamacpp, ollama.
+ *   []ModelSummary — all models found, Ollama, then hailo-ollama.
  *   error          — non-nil only on unexpected filesystem errors.
  *
  * Example:
@@ -30,29 +28,6 @@ import (
 func aggregateModels(a *Agent) ([]ModelSummary, error) {
 	var all []ModelSummary
 
-	agentsDir := ""
-	if a.Workspace != nil {
-		agentsDir = a.Workspace.Root + "/agents"
-	}
-
-	workspaceRoot := ""
-	if a.Workspace != nil {
-		workspaceRoot = a.Workspace.Root
-	}
-
-	// Llamafile models — disk scan of ModelsDir (default ~/Models) for *.llamafile files.
-	lb := NewLlamafileBackend(a.Config, agentsDir, workspaceRoot)
-	if models, err := lb.ListModels(); err == nil {
-		all = append(all, models...)
-	}
-
-	// llama.cpp *.gguf models — disk scan of ModelsDir (default ~/Models).
-	cb := NewLlamaCppBackend(a.Config, agentsDir)
-	if models, err := cb.ListModels(); err == nil {
-		all = append(all, models...)
-	}
-
-	// Ollama — live query, silent if unreachable.
 	// Ollama and, when a card or hailo.url is set, hailo-ollama — silent if unreachable.
 	all = append(all, a.listFamilyModels()...)
 
@@ -60,7 +35,7 @@ func aggregateModels(a *Agent) ([]ModelSummary, error) {
 }
 
 /** pickAndUseModel presents a combined numbered list of all locally available
- * models across llamafile, llama.cpp, and Ollama. When the user picks an
+ * models across Ollama and hailo-ollama. When the user picks an
  * unaliased model, promptLazyRegister offers to save a short alias. If a
  * different backend is currently active, a warn-and-switch message is printed
  * and the outgoing server is stopped when Harvey owns it.
@@ -81,7 +56,7 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
 		return err
 	}
 	if len(models) == 0 {
-		return Negativef("no models found. Install a llamafile, *.gguf, or an Ollama model")
+		return Negativef("no models found. Pull a model with ollama pull")
 	}
 
 	// Build display items.
@@ -89,16 +64,19 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
 	activeEngine := ""
 	activeModel := ""
 	if a.Backend != nil {
-		activeEngine = a.Backend.Name()
+		activeEngine = a.activeServiceName()
 		activeModel = a.Backend.ActiveModel()
 	}
 
 	for i, m := range models {
-		label := fmt.Sprintf("%-40s [%s]", m.Name, m.EngineLabel())
+		label := m.Name + notPulledNote(m)
+		if a.showService() {
+			label = a.displayModel(m.ServiceName(), m.Name) + notPulledNote(m)
+		}
 		if m.Path != "" {
 			label = fmt.Sprintf("%-40s %-36s [%s]", m.Name, shortenPath(m.Path), m.Engine)
 		}
-		active := m.Engine == activeEngine && strings.EqualFold(m.Name, activeModel)
+		active := m.ServiceName() == activeEngine && strings.EqualFold(m.Name, activeModel)
 		// Values are 1-based so "0" remains the unambiguous cancel sentinel.
 		items[i] = SelectItem{Value: fmt.Sprintf("%d", i+1), Label: label, Active: active}
 	}
@@ -123,6 +101,24 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
  */
 var listLocalModels = aggregateModels
 
+// splitServicePrefix splits "service/model" when the prefix is ollama, hailo or
+// the service of one of models; otherwise it returns "" and the query whole.
+func splitServicePrefix(models []ModelSummary, query string) (string, string) {
+	if e, rest := parseQualifiedModel(query); e != "" {
+		return e, rest
+	}
+	i := strings.Index(query, "/")
+	if i <= 0 || i == len(query)-1 {
+		return "", query
+	}
+	for _, m := range models {
+		if strings.EqualFold(m.ServiceName(), query[:i]) {
+			return m.ServiceName(), query[i+1:]
+		}
+	}
+	return "", query
+}
+
 /** matchModel finds the local model a user meant by name. An exact name
  * (ignoring case) wins over a prefix; a name that matches exactly one model on
  * one engine, or is a prefix of exactly one, selects it. A name that matches
@@ -143,10 +139,11 @@ var listLocalModels = aggregateModels
  */
 func matchModel(models []ModelSummary, query string) (ModelSummary, []ModelSummary, bool) {
 	// engine/model selects within one engine.
-	if engine, rest := parseQualifiedModel(strings.TrimSpace(query)); engine != "" {
+	// The prefix is a default engine or the name of a service some model is on.
+	if service, rest := splitServicePrefix(models, strings.TrimSpace(query)); service != "" {
 		var same []ModelSummary
 		for _, m := range models {
-			if strings.EqualFold(m.Engine, engine) {
+			if strings.EqualFold(m.ServiceName(), service) {
 				same = append(same, m)
 			}
 		}
@@ -198,6 +195,17 @@ func matchModel(models []ModelSummary, query string) (ModelSummary, []ModelSumma
  *   err := useSelectedModel(a, ModelSummary{Name: "llama3.2:3b", Engine: "ollama"}, out, false)
  */
 func useSelectedModel(a *Agent, selected ModelSummary, out io.Writer, offerAlias bool) error {
+	if _, configured := a.Config.Services[selected.Service]; configured {
+		if selected.NotPulled {
+			return Usagef("%s is not pulled on service %q; pull it on that server first", selected.Name, selected.Service)
+		}
+		if err := a.setServiceModel(selected.Service, selected.Name); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "  %s Using model: %s\n", green("✓"), cyan(qualifiedName(selected)))
+		a.noteWindow(out)
+		return nil
+	}
 	// Warn and switch when engines differ.
 	if a.Backend != nil && a.Backend.Name() != selected.Engine {
 		fmt.Fprintf(out, "  Switching from %s (%s) → %s (%s)\n",
@@ -233,19 +241,12 @@ func useSelectedModel(a *Agent, selected ModelSummary, out io.Writer, offerAlias
 		if err := a.setHailoModel(selected.Name); err != nil {
 			return err
 		}
-	case "llamafile":
-		if err := switchLlamafileModel(a, selected.Name, selected.Path, out); err != nil {
-			return err
-		}
-	case "llamacpp":
-		if err := startLlamaCppModelPath(a, selected.Path, out); err != nil {
-			return err
-		}
 	default:
 		return fmt.Errorf("unknown engine %q", selected.Engine)
 	}
 
 	fmt.Fprintf(out, "  %s Using model: %s\n", green("✓"), cyan(displayName))
+	a.noteWindow(out)
 	return nil
 }
 
@@ -273,7 +274,7 @@ func promptLazyRegister(a *Agent, item ModelSummary, out io.Writer) (string, err
 	// on different backends from sharing an alias.
 	for name, entry := range a.Config.ModelAliases {
 		if strings.EqualFold(entry.Model, item.Name) {
-			if entry.Engine == "" || strings.EqualFold(entry.Engine, item.Engine) {
+			if entry.Engine == "" || strings.EqualFold(entry.Engine, item.ServiceName()) {
 				return name, nil
 			}
 		}
@@ -300,7 +301,7 @@ func promptLazyRegister(a *Agent, item ModelSummary, out io.Writer) (string, err
 	if a.Config.ModelAliases == nil {
 		a.Config.ModelAliases = make(map[string]ModelAlias)
 	}
-	a.Config.ModelAliases[alias] = ModelAlias{Model: item.Name, Engine: item.Engine, Tags: tags}
+	a.Config.ModelAliases[alias] = ModelAlias{Model: item.Name, Engine: item.ServiceName(), Tags: tags}
 	if a.Workspace != nil {
 		_ = SaveModelAliases(a.Workspace, a.Config)
 	}

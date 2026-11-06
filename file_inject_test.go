@@ -195,7 +195,7 @@ func TestToolsReliable_CapYes(t *testing.T) {
 	a.Config.ToolsEnabled = true
 	a.Tools = &ToolRegistry{}
 	a.ModelCache = mc
-	// AnyLLMClient with model name "granite4.1:8b"
+	// OllamaChatClient with model name "granite4.1:8b"
 	a.Client = newOllamaLLMClient("http://localhost:11434", "granite4.1:8b", 0)
 
 	if !a.toolsReliable() {

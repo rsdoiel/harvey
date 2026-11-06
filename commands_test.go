@@ -5,7 +5,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,8 +25,6 @@ func newTestAgent(t *testing.T) *Agent {
 	cfg := DefaultConfig()
 	cfg.Security.SafeMode = false // tests exercise command mechanics, not safe mode policy
 	// A test agent never scans this machine's ~/Models (harvey.local has llamafiles).
-	cfg.Llamafile.ModelsDir = t.TempDir()
-	cfg.LlamaCpp.ModelsDir = t.TempDir()
 	return &Agent{
 		Config:    cfg,
 		Workspace: ws,
@@ -705,16 +702,16 @@ func TestCmdReadDir_notADirectory(t *testing.T) {
 // ── route commands ────────────────────────────────────────────────────────────
 
 // newTestAgentWithRoutes returns a test agent with an initialised route
-// registry containing one Anthropic endpoint.
+// registry containing one Ollama endpoint.
 func newTestAgentWithRoutes(t *testing.T) *Agent {
 	t.Helper()
 	a := newTestAgent(t)
 	a.Routes = NewRouteRegistry()
 	a.Routes.Add(&RouteEndpoint{
-		Name:  "claude",
-		URL:   "anthropic://",
-		Model: "claude-3-5-sonnet",
-		Kind:  KindAnthropic,
+		Name:  "pi2",
+		URL:   "ollama://192.168.1.12:11434",
+		Model: "llama3.1:8b",
+		Kind:  KindOllama,
 	})
 	return a
 }
@@ -751,11 +748,11 @@ func TestRouteProbe_notFound(t *testing.T) {
 func TestRouteProbe_knownEndpoint(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	if err := routeProbe(a, "claude", &out); err != nil {
+	if err := routeProbe(a, "pi2", &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	body := out.String()
-	for _, want := range []string{"claude", "anthropic", "claude-3-5-sonnet"} {
+	for _, want := range []string{"pi2", "ollama", "llama3.1:8b"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("probe output missing %q:\n%s", want, body)
 		}
@@ -783,10 +780,10 @@ func TestRouteSet_notFound(t *testing.T) {
 func TestRouteSet_toolsOn(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	if err := routeSet(a, []string{"claude", "tools", "on"}, &out); err != nil {
+	if err := routeSet(a, []string{"pi2", "tools", "on"}, &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ep := a.Routes.Lookup("claude")
+	ep := a.Routes.Lookup("pi2")
 	if ep == nil || !ep.Tools {
 		t.Error("expected ep.Tools to be true after 'set tools on'")
 	}
@@ -795,11 +792,11 @@ func TestRouteSet_toolsOn(t *testing.T) {
 func TestRouteSet_toolsOff(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	// Enable first, then disable.
-	ep := a.Routes.Lookup("claude")
+	ep := a.Routes.Lookup("pi2")
 	ep.Tools = true
 
 	var out strings.Builder
-	if err := routeSet(a, []string{"claude", "tools", "off"}, &out); err != nil {
+	if err := routeSet(a, []string{"pi2", "tools", "off"}, &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if ep.Tools {
@@ -810,7 +807,7 @@ func TestRouteSet_toolsOff(t *testing.T) {
 func TestRouteSet_unknownKey(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	err := routeSet(a, []string{"claude", "badkey", "on"}, &out)
+	err := routeSet(a, []string{"pi2", "badkey", "on"}, &out)
 	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown setting") {
 		t.Errorf("expected a usage error naming the unknown setting, got: %v", err)
 	}
@@ -819,7 +816,7 @@ func TestRouteSet_unknownKey(t *testing.T) {
 func TestRouteSet_unknownValue(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	err := routeSet(a, []string{"claude", "tools", "maybe"}, &out)
+	err := routeSet(a, []string{"pi2", "tools", "maybe"}, &out)
 	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown value") {
 		t.Errorf("expected a usage error naming the unknown value, got: %v", err)
 	}
@@ -837,7 +834,7 @@ func TestSubcommandCompletion_memory(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("expected subcommand completions for '/memory ', got none")
 	}
-	for _, want := range []string{"mine", "list", "show", "recall", "profile"} {
+	for _, want := range []string{"mine", "list", "show", "recall"} {
 		found := false
 		for _, g := range got {
 			if g == want {
@@ -868,26 +865,6 @@ func TestSubcommandCompletion_prefix(t *testing.T) {
 	}
 }
 
-func TestSubcommandCompletion_rag(t *testing.T) {
-	a := newTestAgent(t)
-	a.registerCommands()
-	completer := a.buildCompleter()
-
-	got := completer("/rag ")
-	for _, want := range []string{"list", "new", "use", "drop", "ingest", "status", "query", "on", "off"} {
-		found := false
-		for _, g := range got {
-			if g == want {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected %q in /rag completions, got %v", want, got)
-		}
-	}
-}
-
 func TestSubcommandCompletion_noSubcommands(t *testing.T) {
 	a := newTestAgent(t)
 	a.registerCommands()
@@ -910,48 +887,6 @@ func TestSubcommandCompletion_sorted(t *testing.T) {
 		if got[i] < got[i-1] {
 			t.Errorf("completions not sorted: %q before %q", got[i-1], got[i])
 		}
-	}
-}
-
-func TestArgCompletion_ragStoreNames(t *testing.T) {
-	a := newTestAgent(t)
-	a.Config.Memory.RagStores = []RagStoreEntry{
-		{Name: "harvey"},
-		{Name: "project-docs"},
-	}
-	a.registerCommands()
-	completer := a.buildCompleter()
-
-	got := completer("/rag use ")
-	if len(got) != 2 {
-		t.Fatalf("expected 2 store candidates, got %d: %v", len(got), got)
-	}
-	for _, want := range []string{"harvey", "project-docs"} {
-		found := false
-		for _, g := range got {
-			if g == want {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected %q in /rag use completions, got %v", want, got)
-		}
-	}
-}
-
-func TestArgCompletion_ragStorePrefixFilter(t *testing.T) {
-	a := newTestAgent(t)
-	a.Config.Memory.RagStores = []RagStoreEntry{
-		{Name: "harvey"},
-		{Name: "project-docs"},
-	}
-	a.registerCommands()
-	completer := a.buildCompleter()
-
-	got := completer("/rag use h")
-	if len(got) != 1 || got[0] != "harvey" {
-		t.Errorf("prefix 'h' should match only 'harvey', got %v", got)
 	}
 }
 
@@ -1016,10 +951,10 @@ func TestCmdModelShow_noBackend(t *testing.T) {
 	}
 }
 
-func TestCmdModelShow_withLlamafile(t *testing.T) {
+func TestCmdModelShow_withOllamaModel(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.Llamafile.Active = "qwen-coding"
+	cfg.Ollama.Model = "qwen-coding"
 	a := NewAgent(cfg, ws)
 	a.Client = &mockLLMClient{}
 	var buf strings.Builder
@@ -1031,43 +966,38 @@ func TestCmdModelShow_withLlamafile(t *testing.T) {
 	}
 }
 
-func TestCmdModelList_empty(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
+// /model list asks the servers the config names, and nothing else: a test that
+// builds its agent from DefaultConfig() asks the real localhost:11434 and
+// :8000, so it passed on a machine with models and failed on one without
+// (macmini-rd.local, 2026-11-02). These two fix every input: both URLs, and no
+// card.
+
+func TestCmdModelList_noModelsIsANegativeAnswer(t *testing.T) {
+	a := familyAgent(t, "http://127.0.0.1:1", "http://127.0.0.1:1", false, false)
 	var buf strings.Builder
-	if err := cmdModel(a, []string{"list"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	err := cmdModel(a, []string{"list"}, &buf)
+	if err == nil {
+		t.Fatal("no server has a model, but /model list reported success")
 	}
-	// Should not panic and should produce some output.
-	if buf.Len() == 0 {
-		t.Error("expected non-empty output from /model list")
+	if got := ExitCodeFor(err); got != ClassNegative {
+		t.Errorf("exit class = %v, want negative (a query that finds nothing is 1)", got)
+	}
+	if !strings.Contains(buf.String(), "No models found") {
+		t.Errorf("output = %q, want it to say No models found", buf.String())
 	}
 }
 
-func TestCmdModelList_withLlamafiles(t *testing.T) {
-	// Create stub .llamafile files so aggregateModels can discover them on disk.
-	dir := t.TempDir()
-	for _, name := range []string{"qwen-coding.llamafile", "phi-mini.llamafile"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("stub"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.ModelsDir = dir
-	cfg.LlamaCpp.ModelsDir = dir // no .gguf files here
-	cfg.Ollama.URL = "http://127.0.0.1:1" // unreachable — Ollama skipped
-	a := NewAgent(cfg, ws)
+func TestCmdModelList_listsWhatTheServerHas(t *testing.T) {
+	srv, _ := ollamaFamilyServer(t, false, "model-a", "model-b")
+	a := familyAgent(t, srv.URL, "http://127.0.0.1:1", false, false)
 	var buf strings.Builder
 	if err := cmdModel(a, []string{"list"}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	out := buf.String()
-	if !strings.Contains(out, "qwen-coding") {
-		t.Errorf("expected qwen-coding in list output, got: %s", out)
-	}
-	if !strings.Contains(out, "phi-mini") {
-		t.Errorf("expected phi-mini in list output, got: %s", out)
+	for _, want := range []string{"model-a", "model-b"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("output lacks %s: %s", want, buf.String())
+		}
 	}
 }
 
@@ -1084,17 +1014,6 @@ func TestCmdModelUse_notFound(t *testing.T) {
 }
 
 // ─── vocabulary alias tests ───────────────────────────────────────────────────
-
-func TestRagRemove_alias(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	// No stores registered — remove says there is no such store.
-	err := cmdRag(a, []string{"remove", "nonexistent"}, &buf)
-	if ExitCodeFor(err) != ClassNegative {
-		t.Fatalf("expected a negative result, got: %v", err)
-	}
-}
 
 func TestSkillShow_aliasForInfo(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
@@ -1157,14 +1076,7 @@ func TestSessionUse_aliasForContinue(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/test.spmd"
 	// Create a properly-formatted session using NewRecorder.
-	rec, err := NewRecorder(path, "ollama (mock)", dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rec.RecordTurn("Hello.", "Hi!"); err != nil {
-		t.Fatal(err)
-	}
-	rec.Close()
+	writeLegacyFountain(t, path, "ollama (mock)", dir, "Hello.", "Hi!")
 
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
@@ -1179,18 +1091,11 @@ func TestSessionUse_aliasForContinue(t *testing.T) {
 
 // TestCmdResume_aliasForSessionUse verifies that /resume FILE behaves
 // identically to /session use FILE — /resume is a thin discoverability alias
-// (matching the --resume flag's name) over the same ContinueFromFountain path.
+// (matching the --resume flag's name) over the same ContinueFromSession path.
 func TestCmdResume_aliasForSessionUse(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/test.spmd"
-	rec, err := NewRecorder(path, "ollama (mock)", dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rec.RecordTurn("Hello.", "Hi!"); err != nil {
-		t.Fatal(err)
-	}
-	rec.Close()
+	writeLegacyFountain(t, path, "ollama (mock)", dir, "Hello.", "Hi!")
 
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
@@ -1209,14 +1114,7 @@ func TestCmdResume_aliasForSessionUse(t *testing.T) {
 func TestCmdResume_noArgsShowsPicker(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/test.spmd"
-	rec, err := NewRecorder(path, "ollama (mock)", dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rec.RecordTurn("Hello.", "Hi!"); err != nil {
-		t.Fatal(err)
-	}
-	rec.Close()
+	writeLegacyFountain(t, path, "ollama (mock)", dir, "Hello.", "Hi!")
 
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
@@ -1271,130 +1169,17 @@ func TestRouteUse_noArgs_clearsActiveRoute(t *testing.T) {
 
 // ─── /rag show ────────────────────────────────────────────────────────────────
 
-func TestRagShow_activeStore(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Memory.RagStores = []RagStoreEntry{
-		{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"},
-	}
-	cfg.Memory.RagActive = "golang"
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	if err := cmdRag(a, []string{"show"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "golang") {
-		t.Errorf("expected store name in output, got: %s", out)
-	}
-	if !strings.Contains(out, "nomic-embed-text") {
-		t.Errorf("expected embedding model in output, got: %s", out)
-	}
-	if !strings.Contains(out, "agents/rag/golang.db") {
-		t.Errorf("expected db path in output, got: %s", out)
-	}
-}
-
-func TestRagShow_namedStore(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Memory.RagStores = []RagStoreEntry{
-		{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"},
-		{Name: "writing", DBPath: "agents/rag/writing.db", EmbeddingModel: "nomic-embed-text"},
-	}
-	cfg.Memory.RagActive = "golang"
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	if err := cmdRag(a, []string{"show", "writing"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "writing") {
-		t.Errorf("expected 'writing' in output, got: %s", out)
-	}
-	if !strings.Contains(out, "agents/rag/writing.db") {
-		t.Errorf("expected writing db path in output, got: %s", out)
-	}
-}
-
-func TestRagShow_notFound(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	err := cmdRag(a, []string{"show", "nonexistent"}, &buf)
-	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "not found") {
-		t.Errorf("expected a negative not-found result, got: %v", err)
-	}
-}
-
-func TestRagShow_noActive(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	err := cmdRag(a, []string{"show"}, &buf)
-	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no store configured") {
-		t.Errorf("expected a negative result naming the missing store, got: %v", err)
-	}
-}
-
 // ─── /model use (no arg → picker) ────────────────────────────────────────────
 
 func TestCmdModelUse_noArg_noModels(t *testing.T) {
 	a := newTestAgent(t)
-	// Point all backends at empty/unreachable sources so no models are found.
-	emptyDir := t.TempDir()
-	a.Config.Llamafile.ModelsDir = emptyDir
-	a.Config.LlamaCpp.ModelsDir = emptyDir
+	// Point the backend at an unreachable source so no models are found.
 	a.Config.Ollama.URL = "http://127.0.0.1:1" // unreachable — ProbeOllama returns false
 	a.In = strings.NewReader("\n")
 	var buf strings.Builder
 	err := cmdModel(a, []string{"use"}, &buf)
 	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no models found") {
 		t.Errorf("expected a negative result naming 'no models found', got: %v", err)
-	}
-}
-
-func TestCmdModelUse_noArg_showsPicker(t *testing.T) {
-	a := newTestAgent(t)
-	dir := t.TempDir()
-	// Create actual .llamafile files so the disk scanner finds them.
-	for _, name := range []string{"qwen-coder.llamafile", "gemma4.llamafile"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("placeholder"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	a.Config.Llamafile.ModelsDir = dir
-	a.Config.LlamaCpp.ModelsDir = dir // no .gguf files here
-	// Simulate user entering "0" → cancellation without model switch.
-	a.In = strings.NewReader("0\n")
-	var buf strings.Builder
-	if err := cmdModel(a, []string{"use"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "qwen-coder") {
-		t.Errorf("expected model name qwen-coder in picker output, got: %s", out)
-	}
-	if !strings.Contains(out, "gemma4") {
-		t.Errorf("expected model name gemma4 in picker output, got: %s", out)
-	}
-}
-
-func TestCmdModelUse_noArg_selectsModel(t *testing.T) {
-	a := newTestAgent(t)
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "qwen-coder.llamafile"), []byte("placeholder"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	a.Config.Llamafile.ModelsDir = dir
-	a.Config.LlamaCpp.ModelsDir = dir
-	// Select item 1; picker will show qwen-coder, switch will fail (not a real binary).
-	a.In = strings.NewReader("1\n\n\n") // model select + skip alias prompt + skip tags
-	var buf strings.Builder
-	cmdModel(a, []string{"use"}, &buf)
-	out := buf.String()
-	if !strings.Contains(out, "qwen-coder") {
-		t.Errorf("expected selected model name in output, got: %s", out)
 	}
 }
 
@@ -1416,12 +1201,7 @@ func TestSessionUse_noArg_showsPicker(t *testing.T) {
 
 	// Write two minimal session files.
 	for _, name := range []string{"alpha.spmd", "beta.spmd"} {
-		rec, err := NewRecorder(sessDir+"/"+name, "mock", sessDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = rec.RecordTurn("hello", "hi")
-		rec.Close()
+		writeLegacyFountain(t, sessDir+"/"+name, "mock", sessDir, "hello", "hi")
 	}
 
 	a := newTestAgent(t)
@@ -1440,12 +1220,7 @@ func TestSessionUse_noArg_showsPicker(t *testing.T) {
 
 func TestSessionContinue_noArg_showsPicker(t *testing.T) {
 	sessDir := t.TempDir()
-	rec, err := NewRecorder(sessDir+"/session.spmd", "mock", sessDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = rec.RecordTurn("hello", "hi")
-	rec.Close()
+	writeLegacyFountain(t, sessDir+"/session.spmd", "mock", sessDir, "hello", "hi")
 
 	a := newTestAgent(t)
 	a.SessionsDir = sessDir
@@ -1479,123 +1254,6 @@ func newTestAgentWithKB(t *testing.T) (*Agent, int64) {
 	}
 	a.Config.Memory.CurrentProjectID = pid
 	return a, pid
-}
-
-func TestKBObserve_SetsLastObservationID(t *testing.T) {
-	a, _ := newTestAgentWithKB(t)
-	var buf strings.Builder
-	if err := kbObserve(a, []string{"note", "something interesting"}, &buf); err != nil {
-		t.Fatalf("kbObserve: %v", err)
-	}
-	if a.LastObservationID == 0 {
-		t.Error("expected LastObservationID to be set after /kb observe")
-	}
-}
-
-func TestKBObserve_HintsRAGSources(t *testing.T) {
-	a, _ := newTestAgentWithKB(t)
-	// Seed a source and set LastRAGInfo with it.
-	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Test Paper", IdentifierType: "doi", IdentifierValue: "10.1/test"})
-	a.LastRAGInfo = &RAGAugmentInfo{
-		StoreName: "docs.db",
-		Chunks:    1,
-		TopScore:  0.9,
-		Sources: []RAGChunkRef{
-			{Source: "paper.md", SourceDOI: "10.1/test", SourceTitle: "Test Paper"},
-		},
-	}
-	_ = srcID
-
-	var buf strings.Builder
-	if err := kbObserve(a, []string{"finding", "RAG helped here"}, &buf); err != nil {
-		t.Fatalf("kbObserve: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "cite") {
-		t.Errorf("expected /kb cite hint in output when LastRAGInfo has sources; got:\n%s", out)
-	}
-}
-
-func TestKBCite_LinksToLastObservation(t *testing.T) {
-	a, pid := newTestAgentWithKB(t)
-	obsID, _ := a.KB.AddObservation(pid, "note", "needs a citation")
-	a.LastObservationID = obsID
-	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Cited Work"})
-
-	var buf strings.Builder
-	if err := kbCite(a, []string{strconv.FormatInt(srcID, 10)}, &buf); err != nil {
-		t.Fatalf("kbCite: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "linked") {
-		t.Errorf("expected 'linked' in output; got: %s", out)
-	}
-	// Verify the link is actually in the DB.
-	sources, err := a.KB.ObservationSources(obsID)
-	if err != nil {
-		t.Fatalf("ObservationSources: %v", err)
-	}
-	if len(sources) != 1 || sources[0].Title != "Cited Work" {
-		t.Errorf("expected 'Cited Work' linked to observation; got: %v", sources)
-	}
-}
-
-func TestKBCite_NoLastObservation(t *testing.T) {
-	a, _ := newTestAgentWithKB(t)
-	var buf strings.Builder
-	err := kbCite(a, []string{"1"}, &buf)
-	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no recent observation") {
-		t.Errorf("expected a negative result naming the missing observation; got: %v", err)
-	}
-}
-
-func TestKBShow_WithSources(t *testing.T) {
-	a, pid := newTestAgentWithKB(t)
-	obsID, _ := a.KB.AddObservation(pid, "finding", "important finding")
-	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Key Reference", IdentifierType: "doi", IdentifierValue: "10.1/key"})
-	_ = a.KB.LinkObservationSource(obsID, srcID, "cited")
-
-	var buf strings.Builder
-	if err := kbShow(a, []string{strconv.FormatInt(obsID, 10)}, &buf); err != nil {
-		t.Fatalf("kbShow: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "important finding") {
-		t.Errorf("expected observation body in output; got: %s", out)
-	}
-	if !strings.Contains(out, "Key Reference") {
-		t.Errorf("expected source title in output; got: %s", out)
-	}
-}
-
-func TestKBShow_RetractedSourceWarning(t *testing.T) {
-	a, pid := newTestAgentWithKB(t)
-	obsID, _ := a.KB.AddObservation(pid, "note", "based on a paper")
-	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Retracted Paper"})
-	_ = a.KB.LinkObservationSource(obsID, srcID, "cited")
-	_ = a.KB.RetractSource(srcID, "Withdrawn by publisher")
-
-	var buf strings.Builder
-	if err := kbShow(a, []string{strconv.FormatInt(obsID, 10)}, &buf); err != nil {
-		t.Fatalf("kbShow: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "RETRACTED") {
-		t.Errorf("expected RETRACTED warning in output; got: %s", out)
-	}
-}
-
-func TestClearHistory_ClearsLastRAGInfo(t *testing.T) {
-	a := newTestAgent(t)
-	a.LastRAGInfo = &RAGAugmentInfo{StoreName: "docs.db", Chunks: 1, TopScore: 0.9}
-	a.LastObservationID = 42
-	a.ClearHistory()
-	if a.LastRAGInfo != nil {
-		t.Error("expected LastRAGInfo to be nil after ClearHistory")
-	}
-	if a.LastObservationID != 0 {
-		t.Error("expected LastObservationID to be 0 after ClearHistory")
-	}
 }
 
 // ─── /model mode ──────────────────────────────────────────────────────────────

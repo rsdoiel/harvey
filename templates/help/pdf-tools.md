@@ -1,8 +1,7 @@
 # PDF Tools
 
 Harvey uses `pdftotext` (part of the Poppler suite) to extract text
-from PDF files. This is used by `/read-pdf` and by `/rag ingest` when
-ingesting PDF documents into a RAG store.
+from PDF files. This is used by `/read-pdf` and `/read`.
 
 Harvey works without PDF tools installed — you simply cannot read or
 ingest PDF files.
@@ -63,4 +62,3 @@ support.
 ## See Also
 
     /help getting-started   — full prerequisites and first-run guide
-    /help rag               — ingesting documents into Harvey's knowledge store

@@ -442,18 +442,14 @@ func TestKBLearn_UnknownSubcommandGivesUsage(t *testing.T) {
 	}
 }
 
-func TestCmdKB_RoutesLearnAndListsItInTheUsage(t *testing.T) {
+func TestCmdKB_RoutesLearnToHarvey(t *testing.T) {
+	recordingKB(t)
 	a, _ := learnAgent(t, "")
 	var out strings.Builder
 	if err := cmdKB(a, []string{"learn", "ingest", "--dry-run"}, &out); err != nil {
 		t.Fatalf("cmdKB learn: %v", err)
 	}
-	if strings.Contains(out.String(), "Unknown kb subcommand") {
-		t.Errorf("output = %q, want /kb learn routed", out.String())
-	}
-	var usage strings.Builder
-	err := cmdKB(a, []string{"nonesuch"}, &usage)
-	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "learn") {
-		t.Errorf("err = %v, want a usage error listing learn", err)
+	if strings.Contains(out.String(), "kb says hi") {
+		t.Errorf("/kb learn was sent to the installed kb: %q", out.String())
 	}
 }

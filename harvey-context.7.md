@@ -1,63 +1,43 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.20 unreleased
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-30
 
 # NAME
 
-CONTEXT — manage pinned context that survives /clear
+CONTEXT — show what the model sees on the next turn
 
 # SYNOPSIS
 
-/context show
-/context add TEXT...
-/context clear
+/context
 
 # DESCRIPTION
 
-Pinned context is a block of text that is always present as the first user
-message after the system prompt. It survives /clear so the model keeps
-seeing it no matter how many times you reset the conversation.
+/context prints the prompt Harvey would send next, grouped by what each part
+is, with its estimated size in tokens and its share of the prompt limit:
 
-Use pinned context for information the model should never lose sight of:
+  system prompt        the instructions from HARVEY.md and the skill catalog
+  pinned               what you asked to keep with /pin
+  summaries            summaries Harvey made of older turns
+  recalled knowledge   knowledge-base rows recalled or injected
+  dialog               the turns kept word for word
 
-  - A project description or goal that frames every question.
-  - Key constraints ("do not modify files outside agents/").
-  - A running summary you composed to replace a long conversation.
-  - Environment facts that are not in HARVEY.md.
+The prompt limit is the model's known prompt limit, or 85% of its context
+window when only the window is known. When neither is known, nothing is left
+out and the shares are not shown. If the next turn would leave older turns out,
+/context says how many items.
 
-Pinned context is stored in memory only; it is not persisted to
-agents/harvey.yaml or session files. It resets when Harvey exits.
+The same figures are written to the session log: each turn's model_request
+names the pinned items, the summaries, the tail kept and how many items were
+left out.
 
-# SUBCOMMANDS
-
-/context show
-  Print the current pinned context and its byte count. If no context is
-  set, prints "(pinned context is empty)".
-
-/context add TEXT...
-  Append TEXT to the pinned context. Multiple words are joined with a
-  space. Calling add again appends a newline then the new text so you can
-  build up multi-line context incrementally.
-
-~~~
-  /context add This project targets Raspberry Pi OS (armv7l).
-  /context add Never use cgo; the binary must be statically linked.
-~~~
-
-/context clear
-  Remove the pinned context and delete the pinned-context message from the
-  conversation history. The model will not see it in subsequent turns.
-
-# RELATION TO /CLEAR
-
-/clear resets the conversation history but keeps pinned context. After
-/clear, the system prompt is re-injected, then the pinned context is
-re-injected as the first user message, so the model's next turn starts
-with both.
+/context add, /context show and /context clear were removed. Use
+/pin --text TEXT, /pins and /unpin N instead.
 
 # SEE ALSO
 
-  /clear       — reset conversation history (pinned context survives)
-  /summarize   — condense history; combine with /context add to preserve
-                 a summary across /clear
+  /pin       — keep something in front of the model for this session
+  /pins      — list what is pinned, with cost
+  /unpin     — stop keeping a pin
+  /summarize — condense history by hand
+  /help pin
 

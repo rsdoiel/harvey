@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -71,10 +70,8 @@ cd ..</code></pre>
 <pre class="shell"><code>harvey
 # Let&#39;s use the ibm/granite4.1:3b model
 /model use ibm/granite4.1:3b
-# Now let&#39;s setup our RAG
-/rag setup
-# Now ingest our content (this will take a while)
-/rag ingest TrainingMaterials/DenoDocs
+# Ingest our content as documents with kb (this will take a while)
+/kb document ingest TrainingMaterials/DenoDocs
 # Now you&#39;re ready to play, here&#39;s an example prompt
 Show me the source code for a Hello World program for Deno+TypeScript. The program should say &quot;Hi there!&quot;, then prompt for the username&#39;s name, then say &quot;Hi &lt;username&gt;, glad to meet you!&quot;.
 # After a wait if all worked well you should see a TypeScript example

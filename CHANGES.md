@@ -1,5 +1,221 @@
 # CHANGES
 
+## Unreleased
+
+### Added
+
+- **An upgrade notice.** The first time a workspace runs a release newer than the one it last ran, harvey writes what changed to
+  **standard error**, once. It records the version in `agents/last_version`; a brand-new workspace is told nothing, and a used
+  workspace with no record counts as coming from 0.0.20. The text is a short table in `upgrade_notice.go` that a release adds an
+  entry to when a person using the previous one would notice something; a release with no entry prints nothing, and a downgrade
+  prints nothing and leaves the record. It replaces the per-process deprecation notices (the memory-store notice that `/memory`
+  and startup printed to standard output). It is on standard error so it cannot reach the session's input or output, and so it
+  cannot bring back the swallowed first line of piped input.
+- **`/kb draft [--project NAME] [--limit N] [@route] [SESSION]`** drafts observations from a recorded session (DR-0037 item 3). It reads
+  what was said and what the tools returned, in passes that fit the drafting model's window, asks the active model (or `@route`;
+  `learn_model` is not used) what is worth remembering, and writes each answer with `kb observation add --draft --by "harvey MODEL"`.
+  A draft is not searchable or recalled until the author promotes it with `kb observation review promote` in a normal shell; harvey
+  never promotes one (tests grep the package for it). At most 5 per run (`--limit 0` for all); proposals that repeat what the project
+  already holds, in any status, are skipped and named. A failed pass does not stop the others and the exit code is the first failure's.
+  Each draft ends with a line naming its session and events until kb can link a draft to a session event. Needs kb 0.0.30.
+  Ctrl-C once stops after the pass in flight and keeps what was written; Ctrl-C again cancels the request (a hailo-ollama server wedges
+  when a request is abandoned, so the first never does). Tab after `/kb draft` offers the recorded sessions. The command is logged as one
+  `kb_call` and `kb_result`, whose items list the drafts it wrote. Each drafting request asks for at most 512 tokens: without a
+  limit, `llama3.2:3b` on hailo-ollama ran to the server's own stopping point and repeated its five proposals eight times (1,024
+  tokens, 391 s, 40 proposals).
+- **`assay` profiles models on Ollama and hailo-ollama and hints at a route** (DR-0051). `--models` takes `ollama/NAME` and
+  `hailo/NAME`; `--hailo URL` (default `:8000`) is new, and with no `--models` every model on each server that answers is run
+  (a bare name on both servers is a usage error, exit 2). The corpus is organised by capability (`go`, `sql`, `tool-call`,
+  `long-prompt`, `instruction`, `file-read`, `edit`; 15 new probes in `agents/assay/corpus.yaml`), a prompt may carry a
+  `tokens:` size hint, and three new checks: `tool_call`/`no_tool` (Harvey's read-only tools, a call written as plain text
+  fails), `uses_tail` (a long prompt whose last line is the instruction: finds the silent loss past hailo's window), and
+  `exact`. A run prints a model x capability pass/trials matrix with cold start and warm timings, then hints from eight rules
+  (printed with the rules in `report.md`; assay changes no configuration), and writes `summary.json`. New options: `--warmup`
+  (one unrecorded request per model first, default on), `--runs N`, `--timeout SECONDS` (was fixed at 120), and `--category`
+  takes several names. Results gain `service`, `first_token_ns`, `decode_tokens_per_sec` and `prompt_size_est`. The corpus is
+  now read strictly: an unknown key, a duplicate id or a negative `tokens:` is exit 65 (a misspelt check used to be ignored).
+  A stale `bin/assay` built before the llamafile removal still printed `-llamafile`; rebuild.
+- **`kb:` in `agents/harvey.yaml`** with `project:`, the kb project `/kb draft` uses when `--project` is not given. See
+  `CONFIGURATION.md`.
+
+### Fixed
+
+- **assay's `compiles` and `go_vet` checks judged the wrong code.** `go build` and `go vet` ran in assay's working directory instead of the temporary directory holding the model's answer, and the answer was saved as `assay_test.go`, which `go build` skips. Started outside a Go module every answer failed with "directory prefix . does not contain main module"; started inside one, the check built that module. Both now build `answer.go` in its own directory. Go results recorded by earlier runs are not valid.
+- **A model never read a tool's result.** The tool loop compacted each round of tool calls to `[called: NAME]` and `[done]` before
+  the model's next request, which is the first request that should read it, so every result except `read_file`'s was replaced
+  before any model saw it. Found 2026-11-02 in a real session: `recall_knowledge` returned three foulpapers records, the model
+  was sent `[done]`, asked again, was sent `[done]` again, and answered from nothing. A round is now compacted after the model
+  has read it (one round later, and at the end of the turn). Logs written earlier replay as they were.
+- **harvey no longer asks Ollama for a model's whole trained context window.** It sent `num_ctx` equal to the window `/api/show`
+  reports, 131,072 tokens for `llama3.2:3b` and `granite4`, so Ollama tried to allocate a 14 GiB cache for `llama3.2:3b` and, on a
+  16 GB Raspberry Pi, the kernel killed `llama-server` ("llama-server process has terminated: signal: killed"); every chat with such a
+  model failed unless `ollama.context_length` was set. When an Ollama model is selected (startup and every switch) harvey now fixes its
+  window at the largest that fits in 60% of the memory then available, from the model's layers, KV heads and head size and its weights,
+  capped by the model's own window and a ceiling of 32,768 tokens (`ollama.max_context`). The same number is what harvey budgets against
+  (`/kb draft`, summaries, the assembler). The window is told to you at startup and at a switch when it is below the model's maximum, and
+  `/status` and the session log (`window.source`: `memory`, `ceiling`, `model` or `configured`) say what set it. An explicit
+  `ollama.context_length` is still used as given, with a warning when it is more than memory is estimated to hold. Memory is read from
+  `/proc/meminfo`; elsewhere only the ceiling applies. The model cache gains a `kv_bytes_per_token` column. Found by `/kb draft`; test
+  `TestWindow_ALargeTrainedWindowIsNotRequestedWhenMemoryCannotHoldIt` (red first). Design:
+  `agents/projects/harvey/design/memory-aware-context-window-design.md`.
+
+### Changed
+
+- **harvey pairs with a kb version.** Every call to the installed `kb` first checks `kb -version` (once per process) against
+  the oldest release harvey works with, 0.0.30 (`kbMinVersion` in `kbversion.go`), the first with draft observations
+  (knowledge DR-0090): a draft is left out of recall and of the default `observation list`, and only a person at a terminal can promote one. A kb that is older, or whose version
+  cannot be read, is treated as unavailable: `/kb`, recall and the `recall_knowledge` tool report it (exit 69) and do not run
+  it, and `/kb` completion offers only harvey's own verbs. Raise `kbMinVersion` together with a fixture and a contract test
+  when harvey comes to depend on something a newer kb added. `codemeta.json` lists kb under `softwareRequirements`.
+- Knowledge recall for the prompt (DR-0037 item 4) runs the installed `kb -json concept recall` instead of linking the
+  `knowledge` library: it still names each cited work and flags a retracted one with its note. A recalled row's text is kb's
+  shortened excerpt, not the full body. `kb` must be installed for recall to work; without it recall reports that kb is
+  unavailable. Tests of the kb contract live in `kbrecall_test.go` with fixtures in `testdata/kb/`.
+
+- **`--debug` no longer writes `agents/logs/harvey-TIMESTAMP.jsonl`.** Harvey now records every session as an append-only JSONL
+  log, `agents/sessions/NAME.jsonl`, beside the Fountain file with the same name (workspace DRs 0036, 0038, 0039 and 0040). It is
+  written whether or not `--debug` is set; `--debug` only adds level-debug events, such as the exact messages sent with each
+  request, which rendering and kb ingest skip. Anything that read the old `agents/logs` file should read the session log instead.
+  The Fountain `.spmd` files are unchanged.
+
+- **The Fountain `.spmd` file is rendered from the session log when the session closes.** It used to be written live, scene by
+  scene. During a session the file now holds only the title page; the whole screenplay appears at close, or at the next start
+  if the session died (harvey says so). The format is the same, and nothing the live recording wrote is lost: `@name` routed
+  turns, skill loads, write offers, chunk analysis and `/pipeline` runs all render from the log. Two differences: tool calls are
+  now shown as `[[tool: …]]` notes in the turn (the live recorder lost them after tool-result compaction), and a turn that
+  failed is shown with the failure. Anything that reads the *current* session's `.spmd` while it is running will see only the
+  title page; read the session log (`agents/sessions/NAME.jsonl`) instead.
+
+- **Resume, replay and the session list read the session log.** `--continue`/`--resume`, `/session use`, `/session show`,
+  `--replay` and `/session list` rebuild from `agents/sessions/NAME.jsonl`, not from the Fountain file. A turn that failed or
+  went to a named `@route` is no longer loaded into a resumed conversation, and a replay skips routed turns. A replay writes a
+  session log of its own (marked `replay_of`, its inputs `origin: replay`) and renders its `.spmd` from it. An older `.spmd`
+  with no log still loads, through the old reader, for one more release.
+
+- **`/rename` renames the whole session.** The `.spmd`, the session log and its `.blobs` directory move together; a name that
+  is already taken is refused (exit 73) and nothing moves.
+
+- **The prompt for a turn is assembled from the session log.** When the active model's prompt limit is known and the
+  conversation is over it, the oldest whole turns are left out as before, but now the choice is made from the log and written
+  to it: the turn's `model_request` names the pinned items, the summaries, the recalled knowledge and the tail kept, how many
+  messages were left out and the limit. The prompt is ordered system prompt, pinned context, summaries, recalled knowledge,
+  then the turns, so a context pinned in the middle of a session moves to the front. When the log cannot reproduce the
+  history (a prompt that held a redacted secret) harvey falls back to the old trim. When the model's prompt limit is not known
+  but its context window is (`--context`, `ollama.context_length`, or probed), the prompt is kept to 85% of the window, which
+  leaves room for the reply; before, such a conversation was never trimmed. The `model_request` records which limit applied.
+
+- **Summaries name what they stand for.** The rolling summary is now made by the context assembler: after a reply, when the
+  conversation reaches `rolling_summary.warn_at_pct` of the prompt limit, every turn but the last `keep_turns` is summarised
+  by the active model and replaced by one summary, and the session log records the summary with the ids of the events it
+  replaces (a later summary absorbs the earlier one). `keep_turns` now counts turns, not messages, and `warn_at_pct` is a
+  share of the prompt limit, not of the window. If the call fails, harvey says so once, leaves the history alone, does not
+  try again for three turns, and the oldest turns are left out as before.
+
+- **Pins: `/pin`, `/unpin`, `/pins`.** `/pin --text TEXT` keeps text in front of the model for the rest of the session;
+  `/pin EVENT_ID` pins an event of the session log (the line you typed, a reply); `/pin kb:record:PROJECT/DR-NNNN` and
+  `kb:observation:ID` pin a knowledge-base row, read with the installed `kb`. Pins stay ahead of the dialog however long the
+  conversation gets, survive `/clear` and `/summarize`, and may take a quarter of the prompt limit together: a pin over that is
+  refused (exit 1) with the existing pins listed by cost. A pin is a `pin` event in the session log (an `unpin` event when
+  removed), and each turn's `model_request` names the pins. A pinned event is still in the dialog while it is recent, so it
+  is in the prompt twice for a while. `/pins` lists them with their cost and share of the limit. Pins belong to the session.
+
+- **`/context` shows what the model sees.** It prints the next prompt grouped as system prompt, pins, summaries, recalled
+  knowledge and dialog, with sizes and shares of the prompt limit.
+
+### Deprecated
+
+- **The memory store (DR-0037).** `/memory`, `agents/memories/` and session mining are deprecated and will be removed in a
+  following release. Harvey says so once, on standard error, the first time a workspace runs the release that introduced the
+  notice (see "Upgrade notice", Added). Keep what is worth keeping as a kb observation (`/kb observation add --project NAME KIND BODY`); files
+  already in `agents/memories/` stay on disk but will not be read after the removal. Recall for the prompt already comes
+  from the installed `kb`.
+
+### Removed
+
+- **Workspace profiles (DR-0037).** The first-run prompt ("Select [1-7] or press Enter for Blank"), `/profile`, `/memory profile`
+  (list, show, edit, use, rename, on, off), the profile templates (`templates/profiles/`), the profile hand-off that `/profile use`
+  wrote, and the `Profile:` lines in `/status` and `/workspace status` are gone. Profiles were guesses about what each role needs,
+  harvey stays simple, and the prompt took the first line of piped input as its answer. A `workspace_profile` file already in
+  `agents/memories/` stays on disk and is no longer injected into prompts. `/memory` keeps its other subcommands until the memory
+  store is removed. A workspace that never used the memory store is no longer shown the deprecation notice at startup.
+
+- **The model's memory tools (DR-0037 item 5).** `add_memory`, `update_memory`, `delete_memory` and `retrieve_memory` are no
+  longer offered to the model, so a model can no longer write what later becomes context. `recall_knowledge(query, top_k)`
+  replaces `retrieve_memory`: it only reads, through `kb -json concept recall`, and each result carries its `kb:<kind>:<id>`
+  reference, the works it cites and any retraction. A model may draft an observation only once kb has draft-then-promote.
+
+- **`/rag` code (fourth and last slice of DR-0035).** The code behind `/rag` is gone: `rag_support.go` (`RagStore`, ingest and
+  query), `commands_rag.go` (the remote and HTTP ingest helpers), the language chunkers and doc extractors (`code_chunkers.go`,
+  `doc_extractors.go` and the `CodeChunker`/`DocExtractor` registry slots), `scholarly_pdf.go` (section-aware PDF chunking),
+  `encoderfile_embedder.go`, `OllamaEmbedder`, the Hailo embed-error wrapper and `ThoroughProbeModel`, with their tests. Kept: the
+  `Embedder` interface, cosine similarity and vector (de)serialisation for memory (`embedding.go`), `scholarly_identifiers.go`
+  (the first thing to port to knowledge), `chunker.go` and `chunk_analyzer.go` (`/read-chunks`), `pdf_extract.go` (`/read` of a
+  PDF), and the remote readers (`/read`, `/attach`). Everything removed is one `git show v0.0.20:FILE` away.
+
+- **`/rag` (first slice of DR-0035).** The `/rag` command, per-prompt RAG injection (`ragAugment`), `/help rag` and
+  `harvey-rag.7`, and `Using_RAGs_with_Harvey.md` are gone. Retrieval over documents is the knowledge base: `kb document ingest`,
+  then `/kb search`. A `harvey.yaml` whose `memory.rag:` section names an active store or turns RAG on is a configuration error
+  (exit 78); one that only lists stores loads with a note at startup, and the section is dropped the next time the configuration
+  is saved. Existing store files stay on disk and are not converted (their vectors are bound to an embedding model). The last
+  release that carries `/rag` is v0.0.20. The RAG parts of `/memory`, `/status`, `/hint`, `/clear`, the startup digest, the memory tools and
+  `UnifiedMemory.Recall()` are gone, and `/hint` no longer checks a RAG store. **Memory recall is now by keyword only**: the
+  embedder the memory system used came from the active RAG store's configuration, so with no RAG store memory has no embedder
+  (`Agent.memoryEmbedder` returns nil) until the memory store is replaced (DR-0037). `assay` lost `-rag-db`, `-rag-top-k`, `-rag-embed-model` and
+  `-rag-compare` (an old command line using them is now a usage error), and its report and `results.json` no longer carry RAG fields;
+  `-guide-compare` is unchanged. The scholarly-document designs moved to
+  `agents/projects/knowledge/notes/`.
+
+- **`/kb` runs the installed `kb`** (workspace DR-0034). `/kb ARGS` runs `kb -db <workspace db> ARGS` in the workspace, shows its
+  output, and exits with kb's status class. Gone from harvey: `/kb status`, `observe`, `retract`, `cite`, `show`, `check-retractions`
+  and the harvey-side `search`, `project list|add`, `concept` and `source`; use kb's own (`stats`, `observation add`, `source
+  retract`, `source link`, `observation show`, `source check-retractions`, ...). Still harvey's own: `/kb inject`, `/kb learn ...`
+  and `/kb project use ID` (harvey's in-session current project). Tab completion reads `kb -json verbs` once per session. kb must
+  be installed (`go install github.com/rsdoiel/knowledge/cmd/kb@latest`); without it `/kb` says so and nothing else is affected.
+  The session log's `kb_result.items` is empty for a `/kb` command now (it named the rows a harvey-side search or show returned);
+  retrieval for the model (`kb_call` with `purpose: retrieval`) is unchanged. Not built yet from DR-0034: the write-class gate for
+  model-triggered kb calls (item 5; no model tool runs `/kb` today), the `kb -version` minimum (item 3), and `kb search` for
+  injection (item 2).
+
+- **A native Ollama client replaces `any-llm-go`** (workspace DR-0046). Harvey speaks `/api/chat` itself, in `ollama_chat.go`, and the
+  `any-llm-go` module and the `ollama/ollama` packages it pulled in are gone from `go.mod`. Visible changes: harvey sends
+  `options.num_ctx` set to the window it believes for the model (from `ollama.context_length`, `--context`, the model cache or the
+  server), and sends none when the window is unknown; the library always sent 32,000, which cost about 1 GB of memory on a small
+  model. A tool result is sent with role `tool` and the tool's name, as Ollama's API defines, where the library sent it as a `user`
+  message; llama3.2:3b and qwen2.5:3b answer correctly from it. A tool's full parameter schema is sent, not only each property's type
+  and description. Error messages lose the library's `[ollama] provider_error:` prefix and read `ollama chat: 500 Internal Server
+  Error: ...`.
+
+- **The cloud route kinds and the S3 reader** (workspace DR-0042). Harvey talks only to Ollama-shaped servers on this machine or the
+  local network. Gone: `anthropic://`, `deepseek://`, `gemini://`, `mistral://` and `openai://` routes, their API-key environment
+  variables, the `s3://` document reader and its AWS credentials (`/read`, `/attach`, `/rag ingest` and tab completion), and the
+  `anthropic-sdk-go`, AWS SDK and other provider modules from `go.mod`. `ollama://`, `http(s)://` and `sftp://` stay. A route of a
+  removed kind in `agents/routes.json` is skipped with a warning at a terminal and stops the run with exit 78 without one; re-add
+  it as an `ollama://` route (a skipped route is dropped from the file the next time routes are saved). An `s3://` URI is refused
+  with a message that says so. To keep a cloud model, put an Ollama-compatible gateway on your network and point an `ollama://`
+  route at it; to keep S3, mount the bucket as a filesystem. The `any-llm-go` client layer is gone too (next entry).
+
+- **llama.cpp and llamafile support** (workspace DR-0033). Harvey supports Ollama and hailo-ollama only. Gone: the two backends and
+  their launch, probe and model-scan code, the `--llamafile`, `--llamafile-url` and `--llamafile-dir` options,
+  `HARVEY_LLAMAFILE_DIR`, the `llamafile://` and `llamacpp://` route kinds, `assay -llamafile` and `assay -llamacpp`, and the
+  llamafile registry (`/model` no longer lists, shows or starts them; `/model stop` and the restart-on-crash prompt for a
+  llamafile are gone). A `harvey.yaml` with a `llamafile:` or `llamacpp:` section is a configuration error (exit 78): delete the
+  section. A persisted route of either kind fails with a message that says it was removed. The last release that carries them
+  is the one before this. `assay` now talks to Ollama's native API, not its OpenAI-compatible one.
+
+- **`/context add`, `/context show` and `/context clear`.** Pin text with `/pin --text TEXT`, list with `/pins`, remove with
+  `/unpin N`. The single "pinned context" string is now a list of pins. `/context` with no argument is the new view.
+
+- **`/record` (`start`, `stop`, `status`) and `/help record`.** Every session is logged from the start, so there is nothing to
+  start or stop, and the log's file name is chosen with `--record-file` or `/rename NAME`. `--record` and `--record-file` stay.
+  The `harvey-record.7` manual page is gone; `harvey-session.7` covers sessions.
+
+### Added
+
+- **A complete record of each session.** The session log holds every user input, model request and response (with the usage the
+  backend reported), tool call and result, slash command and model switch, so a turn after a model switch is no longer lost.
+  Secret-shaped values (private keys, `Authorization` and `Bearer` values, `NAME=value` for names like `password` and
+  `api_key`) are redacted before anything is written; a bare word such as "token" is only flagged.
+
 ## v0.0.20 (2026-10-20)
 
 Recalled knowledge now says which works it rests on, and flags a retracted one. No behaviour changes to existing setups.

@@ -108,7 +108,7 @@ func TestMainRun_JSONFlagDoesNotAffectSuccess(t *testing.T) {
 // Every flag that takes a value is refused when the value is missing.
 func TestMainRun_FlagWithoutItsArgumentIsUsage(t *testing.T) {
 	for _, flag := range []string{
-		"-m", "--model", "--ollama", "--llamafile", "--llamafile-url", "--llamafile-dir",
+		"-m", "--model", "--ollama",
 		"-w", "--workdir", "--record-file", "--continue", "--replay", "--replay-output",
 	} {
 		code, out, errOut := run(t, flag)
@@ -129,7 +129,6 @@ func inWorkspace(t *testing.T) string {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("HARVEY_LLAMAFILE_DIR", "")
 	return dir
 }
 
@@ -159,8 +158,7 @@ func TestMainRun_NamedInputsFailFastByClass(t *testing.T) {
 		{"--continue a file that does not exist", append([]string{"--continue", filepath.Join(dir, "nope.spmd")}, closed...), 66},
 		{"--replay a file that does not exist", append([]string{"--replay", filepath.Join(dir, "nope.spmd")}, closed...), 66},
 		{"--record-file in a directory that cannot be made", append([]string{"--record-file", filepath.Join(file, "sub", "x.spmd")}, closed...), 73},
-		{"--llamafile a path that does not exist", append([]string{"--llamafile", filepath.Join(dir, "nope.llamafile")}, closed...), 66},
-		{"--llamafile a file that is not a llamafile", append([]string{"--llamafile", file}, closed...), 66},
+		{"--llamafile was removed (DR-0033)", append([]string{"--llamafile", file}, closed...), 2},
 	} {
 		code, out, errOut := run(t, tc.args...)
 		if code != tc.want {

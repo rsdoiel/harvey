@@ -208,18 +208,3 @@ func TestEditTextInEditor_AnErrorNamesTheWholeEditorCommandIncludingItsArguments
 		t.Errorf("err = %v, want it to show the editor command as configured, arguments included", err)
 	}
 }
-
-// memory_onboarding.go had its own copy of the launch code, with the same bug.
-func TestEditTemplateRaw_HonoursEditorArguments(t *testing.T) {
-	seen := filepath.Join(t.TempDir(), "args.txt")
-	script := fakeEditor(t, `printf '%s\n' "$@" > "`+seen+`"; printf 'from the editor\n' > "$2"`)
-	t.Setenv("EDITOR", script+" --wait")
-
-	got, err := editTemplateRaw([]byte("template\n"), os.Stderr)
-	if err != nil {
-		t.Fatalf("editTemplateRaw with an editor that takes arguments: %v", err)
-	}
-	if string(got) != "from the editor\n" {
-		t.Errorf("got %q, want the editor's output", got)
-	}
-}

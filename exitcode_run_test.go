@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // H3 of exit-codes-plan.md, the library half: what Agent.Run and the code under
@@ -30,7 +29,6 @@ func runFixture(t *testing.T, terminal bool) (*Agent, *Workspace) {
 	cfg := DefaultConfig()
 	cfg.WorkDir = ws.Root
 	cfg.Ollama.URL = "http://127.0.0.1:1"
-	cfg.Llamafile.ModelsDir = t.TempDir()
 	cfg.Security.SafeMode = true
 	a := NewAgent(cfg, ws)
 	a.hailoDevicePath = filepath.Join(t.TempDir(), "no-hailo0") // not this machine's card
@@ -132,9 +130,9 @@ func TestLoadHarveyYAML_ParseErrorIsConfig(t *testing.T) {
 
 // The replay file is checked before the backend: a missing file is 66 whether
 // or not a model is connected, and with a good file and no model it is 69.
-func TestReplayFromFountain_ChecksTheFileBeforeTheBackend(t *testing.T) {
+func TestReplayFromSession_ChecksTheFileBeforeTheBackend(t *testing.T) {
 	a := newTestAgent(t)
-	err := a.ReplayFromFountain(t.Context(), filepath.Join(t.TempDir(), "missing.spmd"), "", io.Discard)
+	err := a.ReplayFromSession(t.Context(), filepath.Join(t.TempDir(), "missing.spmd"), "", io.Discard)
 	if got := ExitCodeFor(err); got != ClassNoInput {
 		t.Errorf("missing replay file, no backend = %v (%v), want no_input", got, err)
 	}
@@ -143,7 +141,7 @@ func TestReplayFromFountain_ChecksTheFileBeforeTheBackend(t *testing.T) {
 	if err := os.WriteFile(good, []byte("Title: t\n\nINT. SESSION - NOW\n\nHARVEY\nhello\n\nUSER\nhi\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err = a.ReplayFromFountain(t.Context(), good, "", io.Discard)
+	err = a.ReplayFromSession(t.Context(), good, "", io.Discard)
 	if got := ExitCodeFor(err); got != ClassUnavailable {
 		t.Errorf("good replay file, no backend = %v (%v), want unavailable", got, err)
 	}
@@ -158,18 +156,5 @@ func TestSystemPromptExceedsContext_IsData(t *testing.T) {
 	}
 	if got := ExitCodeFor(err); got != ClassData {
 		t.Errorf("class %v, want data", got)
-	}
-}
-
-func TestStartLlamafileService_Classes(t *testing.T) {
-	// The wrong kind of file is a bad input, not an unavailable service.
-	_, err := StartLlamafileService("/bin/sh", "http://127.0.0.1:1", "", time.Second, -1, 0, nil)
-	if got := ExitCodeFor(err); got != ClassNoInput {
-		t.Errorf("wrong extension = %v (%v), want no_input", got, err)
-	}
-	// A llamafile that will not serve is an unavailable service.
-	_, err = StartLlamafileService("/nonexistent/x.llamafile", "http://127.0.0.1:1", "", 5*time.Second, -1, 0, nil)
-	if got := ExitCodeFor(err); got != ClassUnavailable {
-		t.Errorf("launch that fails = %v (%v), want unavailable", got, err)
 	}
 }

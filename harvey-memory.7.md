@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 00feb2f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -8,7 +8,16 @@ MEMORY — mine session recordings for memories and manage the memory store
 
 # SYNOPSIS
 
-/memory <mine|list|show|flag|forget|status|recall|profile> [args...]
+/memory <mine|list|show|flag|forget|status|recall> [args...]
+
+# DEPRECATED
+
+The memory store is deprecated and will be removed in a following release
+(DR-0037). Knowledge worth keeping goes in the knowledge base as an
+observation: `/kb observation add --project NAME KIND BODY`. Recall for the
+prompt already comes from `kb`. Files in agents/memories/ stay on disk but
+will not be read after the removal. Harvey prints a notice once per session
+when the store holds memories or when `/memory` is used.
 
 # DESCRIPTION
 
@@ -68,23 +77,9 @@ Fountain files in agents/memories/ inside the workspace.
         Show memory store location, total count, and breakdown by type.
 
   recall QUERY
-        Query all memory silos (workspace profile, project facts, experiential
-        memories, RAG chunks, and KB observations) and print grouped results.
-        Uses FTS5 full-text search plus cosine similarity when a RAG store is
-        configured. No token budget is applied — all matching results are shown.
-
-  profile show|update|use [name]
-        Manage the workspace profile.
-        "list"   — list active and archived profiles (IDs + descriptions).
-        "show"   — print the full content of the active profile document.
-        "edit"   — open the active profile in $EDITOR and re-save on close.
-        "use"    — switch to a new profile: writes a handoff document to
-                   agents/hand-off/, archives the current profile, selects a
-                   template (by name or interactive picker), saves it as the
-                   new profile, and resets history so the new context injects
-                   on the next turn. Alias: /profile use [name].
-        "rename" — rename the workspace in the active profile document.
-        "update" — deprecated alias for "edit".
+        Query all memory silos (project facts, experiential
+        memories, and KB observations) and print grouped results.
+        Uses FTS5 full-text search. No token budget is applied — all matching results are shown.
 
 # MEMORY TYPES
 
@@ -120,14 +115,15 @@ Each memory carries three enrichment fields set at mining time:
 # MEMORY INJECTION
 
 When a session starts, Harvey injects a [memory context] block into the
-conversation. Factual types (workspace_profile, project_fact) always appear
+conversation. The factual type (project_fact) always appears
 first. Experiential memories (tool_use, workflow, user_preference) are ranked
 by FTS5 full-text search and optionally cosine similarity weighted by the
-memory's confidence score. RAG chunks and KB observations follow if token
+memory's confidence score. KB observations follow if token
 budget permits.
 
 The budget is controlled by memory.budget_pct in harvey.yaml (default 0.25 of
-the context window). Setting memory.inject_on_start: false disables injection.
+the context window). Memory injection is OFF by default; enable it with
+memory.inject_on_start: true in harvey.yaml.
 
 # DIGEST
 
@@ -169,7 +165,6 @@ memory before the review card is displayed.
   /memory mine
   /memory mine agents/sessions/harvey-session-20260525-140251.spmd
   /memory list --type workflow
-  /memory list --type workspace_profile
   /memory list --kind pitfall
   /memory list --type tool_use --kind workaround
   /memory show pipeline_confidence_extraction
@@ -177,17 +172,10 @@ memory before the review card is displayed.
   /memory forget old_pattern_a1b2c3
   /memory status
   /memory recall git repository error
-  /memory profile list
-  /memory profile show
-  /memory profile edit
-  /memory profile use web-developer
-  /memory profile rename "Harvey Web Developer"
 
 # SEE ALSO
 
-  /profile               — alias for /memory profile
   /recall QUERY          — alias for /memory recall
-  /help learn            — overview of all three memory silos
-  /help rag              — RAG store management
+  /help learn            — overview of the memory silos
   /help kb               — knowledge base management
 

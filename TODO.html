@@ -14,12 +14,17 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
 <section id="main-content">
 <h2 id="bugs">Bugs</h2>
+<blockquote>
+<p>Entries below that mention llamafile or llama.cpp (their code, tests
+and <code>backend_*</code> files) are history: both backends were
+removed (workspace DR-0033), and the files and tests they name no longer
+exist.</p>
+</blockquote>
 <ul class="task-list">
 <li><p><label><input type="checkbox" checked="" /><strong>FIXED
 2026-10-08</strong> (<code>write_offer_input.go</code>, tests in
@@ -72,8 +77,8 @@ were overridden by <code>agents/harvey.yaml</code>; the flags now set
 (<code>terminal.go:407</code>) calls <code>LoadHarveyYAML</code>, which
 overwrites both when <code>ollama.url</code>/<code>ollama.model</code>
 are set (<code>config.go:850-855</code>). Seen:
-<code>harvey --ollama http://localhost:8001</code> still connected to
-<code>:8000</code>, and <code>harvey -m qwen2.5-coder:1.5b</code> ran
+<code>harvey   --ollama http://localhost:8001</code> still connected to
+<code>:8000</code>, and <code>harvey -m   qwen2.5-coder:1.5b</code> ran
 llama3.2:3b (kb observations 368, 371). The command line should win over
 the file.</label></p></li>
 <li><p><label><input type="checkbox" checked="" /><strong>FIXED
@@ -322,6 +327,88 @@ table.</label></p></li>
 </ul>
 <h2 id="action-items">Action Items</h2>
 <ul class="task-list">
+<li><p><label><input type="checkbox" /><strong>Two write-offer
+mechanisms fire for the same reply in an interactive session.</strong>
+Found 2026-10-30 while testing the Fountain rendering of write offers.
+For every fenced block in a reply, <code>runChatTurn</code> first asks
+“[Write LANG block N/M to file? Path (or Enter to skip)]”
+(<code>terminal.go</code>, the “Code-block extraction” branch) and
+writes the block to whatever path is typed; then
+<code>autoExecuteReply</code> offers each <em>tagged</em> block
+(<code>```text:out/a.txt</code>) with the Write box (yes / no / all /
+quit). A tagged block is therefore offered twice, and the first prompt
+shows the fence’s <code>lang:path</code> label as if it were the
+language. A scripted answer meant for the box (<code>y</code>) is taken
+as a path by the first prompt (it wrote a file named <code>y</code>).
+Not changed; to decide whether the first prompt should skip blocks the
+second one handles. Neither prompt runs without a terminal
+(<code>interactive</code>).</label></p></li>
+<li><p><label><input type="checkbox" /><strong><code>harvey check</code>
+and/or <code>harvey update</code> for a stale
+<code>harvey.yaml</code>.</strong> Raised by the author 2026-10-30, to
+be done later (not now). Several accepted decisions leave existing
+<code>harvey.yaml</code> files out of date: workspace policy DR-0043
+(the <code>safe_mode</code>, <code>allowed_commands</code> and
+<code>permissions:</code> are all ignored in favour of
+<code>policy:</code>), DR-0042 (routes of the removed cloud kinds,
+<code>s3://</code> uses), and DR-0033/DR-0035/DR-0037 (llamafile and
+llama.cpp sections, <code>rag:</code> and <code>memory:</code>
+settings). A <code>harvey check</code> would report a stale file and
+what to change; a <code>harvey update</code> would rewrite it.
+Undecided: one verb or both, and whether <code>update</code> writes in
+place or prints a diff. Constraints: harvey already rewrites
+<code>harvey.yaml</code> whole whenever it saves memory settings or
+aliases (<code>SaveMemoryConfig</code>), so <code>update</code> must not
+drop keys it does not know; exit codes per workspace DR-0003
+(<code>check</code> is 0 when current, 1 when it reports drift, 78 when
+the file is wrong); the verbs sit with <code>init</code>,
+<code>help</code> and <code>completion</code> in
+<code>cmd/harvey</code>. Needs a design brief before
+code.</label></p></li>
+<li><p><label><input type="checkbox" /><strong>Bump <code>go.mod</code>
+to <code>knowledge</code> v0.0.27</strong> (released 2026-10-25; harvey
+requires v0.0.26). A bug fix release with no breaking API change. Two
+things to look at when bumping: <code>kb.IngestDocument</code> (used in
+<code>learn_ingest.go</code> and <code>learn_concepts.go</code>) now
+returns <code>TagWarnings</code> for a wikilink or keyword it skipped,
+which <code>/kb learn ingest</code> does not print yet (the field is new
+and optional, nothing breaks); and <code>kb.AddSource</code>
+(<code>commands_kb.go</code>) makes a title one line and refuses a
+control character (an <code>ErrInvalid</code> error, as a blank title
+already was). Run <code>go mod tidy</code> and the suite. See
+<code>knowledge/CHANGES.md</code> “v0.0.27” and knowledge
+DR-0087.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>DONE
+2026-10-23 (<code>skill_dispatch.go</code>, <code>commands.go</code>
+<code>registerSkillCommands</code>, <code>commands_skill.go</code>
+<code>loadSkill</code>; tests in <code>skill_direct_test.go</code>, red
+first).</strong> Harvey no longer supports skills compiled to
+Bash/PowerShell; it uses a skill directly. Every skill is now a
+<code>/NAME [REQUEST]</code> command that loads the SKILL.md body (a
+non-empty REQUEST is queued as the next chat line),
+<code>/skill load</code> and trigger matches
+(<code>autoLoadSkill</code>) go the same way, and a leftover
+<code>scripts/compiled.*</code> is ignored. Removed:
+<code>skill_compile.go</code>, <code>DispatchSkill</code>,
+<code>runCompiledScript</code>, the <code>HARVEY_*</code> script
+environment and its filter, <code>IsStale</code>,
+<code>CompiledBashPath</code>/<code>CompiledPS1Path</code>,
+<code>/skill run</code>, the stale warning, the <code>scripts/</code>
+directory the suggestor made. Docs and help text rewritten
+(<code>SKILLS.md</code>, <code>ARCHITECTURE.md</code>,
+<code>SECURITY.md</code>, <code>harvey-skills.7.md</code>,
+<code>harvey.1.md</code>). Design brief:
+<code>agents/projects/harvey/design/skills-without-compiled-scripts-design.md</code>;
+workspace DR-0008. Original item: <strong>Stop supporting skills
+compiled to Bash/PowerShell; use skills per the skills spec.</strong>
+Decided 2026-10-23; the workspace stopped compiling skills and removed
+the scripts and the <code>compile-skill</code> skill, and the slash
+command that ran the script was to become the skill used directly. Still
+open: compare <code>ScanSkills</code> with the current skills
+specification (brief Q5); a model-driven way to load a skill (tool) is a
+later item; <code>ActionSkillRun</code> in the audit log is unused;
+<code>harvey-skills.7.html</code> and <code>TODO.html</code> are not
+regenerated.</label></p></li>
 <li><p><label><input type="checkbox" checked="" /><strong>DONE
 2026-10-10 (<code>cmd/harvey/completion.go</code>, tests in
 <code>completion_test.go</code>, red first).</strong>
@@ -561,6 +648,25 @@ memory store can embed through it while chat goes to the HAT. Today
 so this may need a separate embedder URL in <code>harvey.yaml</code> (as
 <code>EmbedderURL</code> already exists for
 encoderfile).</label></p></li>
+<li><p><label><input type="checkbox" /><strong>Support the standard
+<code>-help</code>, <code>-version</code> and <code>-license</code>
+options, as in the author’s other Go programs (<code>kb</code>,
+<code>fountain</code>, <code>fdx</code>, <code>osf</code>,
+<code>scripttool</code>).</strong> <code>cmd/harvey/main.go</code> takes
+<code>-h</code>, <code>-help</code> and <code>--help</code>, but for the
+other two only <code>-v</code>/<code>--version</code> and
+<code>-l</code>/<code>--license</code>: <code>-version</code> and
+<code>-license</code> (single dash, long name) are rejected as
+<code>Unknown flag</code>. Accept <code>-help</code>,
+<code>--help</code>, <code>-version</code>, <code>--version</code>,
+<code>-license</code> and <code>--license</code>, keep the short forms
+working, and make <code>harvey help</code>, <code>harvey.1.md</code>,
+the help text and <code>completion.go</code>
+(<code>completionImmediateOptions</code>) list the same names. Test
+first (DR-0007): drive the real <code>run</code> entry with each
+spelling and expect exit 0 and the version/licence text; then check the
+exit codes against DR-0003. Also check <code>cmd/assay</code> for the
+same options. Added 2026-10-20 at the author’s request.</label></p></li>
 </ul>
 <h2 id="update-next">Update next</h2>
 <ul class="task-list">
@@ -748,7 +854,7 @@ macmini-rd.local’s real database 2026-07-27, via a genuine cross-machine
 <code>ALTER</code> for it, unlike every other column added after the
 original <code>CREATE TABLE</code>). <strong>Fixed 2026-07-27:</strong>
 added the missing
-<code>ALTER TABLE concepts ADD COLUMN created_at DATETIME</code> (no
+<code>ALTER TABLE concepts ADD COLUMN created_at   DATETIME</code> (no
 <code>DEFAULT CURRENT_TIMESTAMP</code> — SQLite rejects a non-constant
 <code>ADD COLUMN</code> default on any non-empty table, confirmed
 against real <code>sqlite3</code>, not just the Go driver) plus an
@@ -779,7 +885,7 @@ copy already excludes unresolvable links rather than propagating them.
 <strong>Fixed 2026-07-27 (on <code>wren</code>):</strong> backed up the
 live file to <code>agents/knowledge.db.pre-cleanup-20260727</code>, then
 ran
-<code>DELETE FROM observation_concepts WHERE observation_id NOT IN (SELECT id FROM observations)</code>
+<code>DELETE FROM observation_concepts WHERE observation_id NOT   IN (SELECT id FROM observations)</code>
 — removed exactly 24 rows. Also checked the other five parent/join
 combinations (<code>observation_concepts</code>→<code>concepts</code>,
 <code>project_concepts</code>→<code>projects</code>/<code>concepts</code>,
@@ -797,8 +903,8 @@ interactive “Resume a prior session? [y/N]” prompt was removed from
 <code>Run()</code> (<code>terminal.go</code>);
 <code>--continue</code>/<code>--resume</code> CLI flags
 (<code>cmd/harvey/main.go</code>) and <code>/resume</code>,
-<code>/session use|continue|replay</code> (<code>commands.go</code>) are
-the confirmed, working replacement.</label></p></li>
+<code>/session   use|continue|replay</code> (<code>commands.go</code>)
+are the confirmed, working replacement.</label></p></li>
 <li><p><label><input type="checkbox" checked="" />I have both Llamafile
 and gguf models in ~/Models on my Mac, bit the gguf models are not
 listed as an option (llama.cpp is installed) — fixed 2026-07-13. Root
@@ -844,7 +950,7 @@ against the actual Gemma4-E4B model — RESOLVED 2026-07-05. Downloaded
 <code>gemma-4-E4B-it-Q5_K_M.llamafile</code> (7.4GB) from
 huggingface.co/mozilla-ai/llamafile_0.10 (no longer dependent on the
 <code>henry</code> build pipeline). Ran
-<code>/read-chunks natural_language_programming.md --chunk-size 800 --max-chunks 20 [topic-drift instruction]</code>
+<code>/read-chunks natural_language_programming.md   --chunk-size 800 --max-chunks 20 [topic-drift instruction]</code>
 — 23 chunks, stopped after 4 completed (user time constraints). All 4
 chunks were coherent, on-topic, and did genuinely useful paragraph-level
 drift analysis — a stark contrast to the original garbled-token bug
@@ -864,9 +970,9 @@ timing across candidate models, now that GPULayers defaults to 0. No
 other model has been timed with the GPU-layers fix in place — the
 earlier <code>bonsai-8b</code> 20+ min “hang” was confounded by the
 GPULayers=99 bug and is not valid timing data. Use
-<code>/read-chunks PATH --chunk-size 800 --max-chunks 2</code> (or 3) on
-the same test document across models to get a fast, comparable per-chunk
-time without committing to a full run. Candidates on disk in
+<code>/read-chunks PATH   --chunk-size 800 --max-chunks 2</code> (or 3)
+on the same test document across models to get a fast, comparable
+per-chunk time without committing to a full run. Candidates on disk in
 <code>~/Models/</code> as of 2026-07-05:
 <code>OpenELM-3B-Instruct-Q4_K_M</code>, <code>Qwen3.5-4B-Q5_K_S</code>,
 <code>gemma-4-E2B-it-Q5_K_M</code> (smaller Gemma4 sibling, needs
@@ -946,7 +1052,7 @@ models. All completed cleanly; full table below (2 chunks each,
 via <code>ps</code> on every model this time):</p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">model</th>
 <th scope="col">context</th>
 <th scope="col">avg/chunk</th>
@@ -954,43 +1060,43 @@ via <code>ps</code> on every model this time):</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>Apertus-8B-Instruct-2509</code></td>
 <td>49152</td>
 <td>1m51s</td>
 <td>~42 min</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>granite-4.1-8b-source-Q4_K_M</code></td>
 <td>16384</td>
 <td>2m19s</td>
 <td>~53 min</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>gemma-4-E2B-it-Q5_K_M</code></td>
 <td>16384</td>
 <td>2m24s</td>
 <td>~55 min</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Bonsai-8B-Q1_0</code></td>
 <td>65536</td>
 <td>3m36s</td>
 <td>~83 min</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>gemma-4-E4B-it-Q5_K_M</code></td>
 <td>16384</td>
 <td>4m38s</td>
 <td>~107 min</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>OpenELM-3B-Instruct-Q4_K_M</code></td>
 <td>16384</td>
 <td>6m13s</td>
 <td>~143 min</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>Qwen3.5-4B-Q5_K_S</code></td>
 <td>16384</td>
 <td>7m51s</td>
@@ -1016,7 +1122,7 @@ this Pi 500, <code>Apertus-8B-Instruct-2509</code> is the clear best fit
 <code>harvey</code>, concept <code>chunking</code>, for the same summary
 as a finding observation.</p></li>
 <li><p><label><input type="checkbox" checked="" />Added
-<code>/read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]</code>
+<code>/read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap   paragraph|sentence|none] [INSTRUCTION...]</code>
 — runs the chunked map-reduce pipeline directly, with no
 overflow-threshold check, and lets chunk-size/ overlap/max-chunks be
 swept per-invocation independent of harvey.yaml. See DECISIONS.md

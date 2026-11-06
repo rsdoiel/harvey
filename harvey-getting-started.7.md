@@ -35,8 +35,7 @@ If Harvey says it cannot connect to Ollama, start the service:
 
 ## Step 2 — Install PDF Tools (optional)
 
-Harvey uses `pdftotext` to extract text from PDF files for the RAG
-store. Harvey works fine without it — you just cannot read PDFs.
+Harvey uses `pdftotext` to extract text from PDF files. Harvey works fine without it — you just cannot read PDFs.
 
 **macOS:**
 
@@ -60,8 +59,7 @@ and add the `bin/` folder to your PATH.
 
     harvey
 
-On first run in a new workspace Harvey will ask you to set up a
-profile. Pick a starting template that fits your role.
+Harvey starts at the prompt. It asks nothing about your role or a profile.
 
 ---
 
@@ -70,4 +68,4 @@ profile. Pick a starting template that fits your role.
     /help ollama       — Harvey's Ollama command reference
     /help pdf-tools    — PDF tools detail and troubleshooting
     /help memory       — how Harvey remembers things across sessions
-    /help rag          — how to ingest documents for retrieval
+    /help kb           — the knowledge base, through the installed kb

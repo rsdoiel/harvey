@@ -1,35 +1,13 @@
 package harvey
 
+import (
+	"os"
+	"strings"
+)
+
 // completion_candidates.go — functions that supply argument value candidates
 // for tab completion (ArgCompletion entries on Command). These must be fast:
 // no LLM calls, no network I/O. File I/O is acceptable (memory store listing).
-
-/** ragStoreSelectItems builds a []SelectItem for the registered RAG stores,
- * with Active set on the currently-active store. Used by picker fallbacks in
- * /rag use and /rag drop.
- *
- * Parameters:
- *   a (*Agent) — current agent.
- *
- * Returns:
- *   []SelectItem — one entry per registered store; empty when none exist.
- *
- * Example:
- *   items := ragStoreSelectItems(a)
- *   chosen, _ := SelectFrom(items, "Select: ", a.In, out)
- */
-func ragStoreSelectItems(a *Agent) []SelectItem {
-	active := a.Config.Memory.ActiveRagStore()
-	items := make([]SelectItem, len(a.Config.Memory.RagStores))
-	for i, s := range a.Config.Memory.RagStores {
-		items[i] = SelectItem{
-			Value:  s.Name,
-			Label:  s.Name,
-			Active: active != nil && active.Name == s.Name,
-		}
-	}
-	return items
-}
 
 /** memorySelectItems builds a []SelectItem for all active memories in the
  * given store, suitable for picker fallbacks in /memory show, /memory forget,
@@ -61,30 +39,6 @@ func memorySelectItems(store *MemoryStore) []SelectItem {
 		}
 	}
 	return items
-}
-
-/** ragStoreNameCandidates returns the names of all registered RAG stores.
- * Called by buildCompleter for /rag use and /rag drop argument completion.
- *
- * Parameters:
- *   a (*Agent) — current agent.
- *
- * Returns:
- *   []string — store name strings; nil when no stores are registered.
- *
- * Example:
- *   names := ragStoreNameCandidates(a) // ["harvey", "project-docs"]
- */
-func ragStoreNameCandidates(a *Agent) []string {
-	stores := a.Config.Memory.RagStores
-	if len(stores) == 0 {
-		return nil
-	}
-	names := make([]string, len(stores))
-	for i, s := range stores {
-		names[i] = s.Name
-	}
-	return names
 }
 
 /** memoryTypeCandidates returns all valid MemoryType constant strings.
@@ -185,30 +139,34 @@ func skillNameCandidates(a *Agent) []string {
 	return names
 }
 
-/** profileTemplateNameCandidates returns template names from ListTemplates.
- * Called by buildCompleter for /profile use argument completion.
+/** draftSessionCandidates returns the names of the recorded sessions that have
+ * a log, for Tab after /kb draft. It reads the sessions directory only; a
+ * session with only a rendered Fountain file has no log to draft from and is
+ * not offered, and a log and the file rendered from it are one name.
  *
  * Parameters:
- *   a (*Agent) — current agent.
+ *   a (*Agent) — the running agent; its SessionsDir is read.
  *
  * Returns:
- *   []string — template name strings; nil when no templates are found.
+ *   []string — session names (the .jsonl file names without the extension);
+ *              empty when the directory is missing.
  *
  * Example:
- *   names := profileTemplateNameCandidates(a) // ["Back End Developer", ...]
+ *   names := draftSessionCandidates(a) // ["harvey-session-20261030-143612"]
  */
-func profileTemplateNameCandidates(a *Agent) []string {
-	wsRoot := ""
-	if a.Workspace != nil {
-		wsRoot = a.Workspace.Root
-	}
-	templates := ListTemplates(wsRoot)
-	if len(templates) == 0 {
+func draftSessionCandidates(a *Agent) []string {
+	if a == nil {
 		return nil
 	}
-	names := make([]string, len(templates))
-	for i, t := range templates {
-		names[i] = t.Name
+	entries, err := os.ReadDir(a.SessionsDir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
+			names = append(names, strings.TrimSuffix(e.Name(), ".jsonl"))
+		}
 	}
 	return names
 }

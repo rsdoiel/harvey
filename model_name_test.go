@@ -14,8 +14,7 @@ func TestParseQualifiedModel(t *testing.T) {
 	for _, c := range []struct{ in, engine, model string }{
 		{"hailo/llama3.2:3b", "hailo", "llama3.2:3b"},
 		{"Ollama/qwen2.5-coder:1.5b", "ollama", "qwen2.5-coder:1.5b"},
-		{"llamacpp/Phi4-Q4", "llamacpp", "Phi4-Q4"},
-		{"llamafile/phi4", "llamafile", "phi4"},
+		{"llamacpp/Phi4-Q4", "", "llamacpp/Phi4-Q4"}, // removed engines are not engines (DR-0033)
 		{"llama3.2:3b", "", "llama3.2:3b"},
 		{"user/model:tag", "", "user/model:tag"}, // a slash in a name is not an engine
 		{"hailo/", "", "hailo/"},                 // nothing after the engine
@@ -202,11 +201,11 @@ func TestStartupModelFlag_BareNameOnlyOnHailo(t *testing.T) {
 func TestStartupModelFlag_PlainOllamaUnchanged(t *testing.T) {
 	ol, hits := ollamaFamilyServer(t, false, "phi4")
 	a := familyAgent(t, ol.URL, "http://127.0.0.1:1", false, false)
-	a.Config.Ollama.Model = "not-pulled:1b"
+	a.Config.Ollama.Model = "phi4"
 	if err := a.pickOllamaModel(newTestBufioReader(""), io.Discard, ""); err != nil {
 		t.Fatal(err)
 	}
-	if a.Backend == nil || a.Backend.Name() != "ollama" || a.Backend.ActiveModel() != "not-pulled:1b" {
+	if a.Backend == nil || a.Backend.Name() != "ollama" || a.Backend.ActiveModel() != "phi4" {
 		t.Errorf("backend = %v", a.Backend)
 	}
 	_ = hits

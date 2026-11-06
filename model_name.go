@@ -9,10 +9,10 @@ import (
 
 // modelEngines are the engine prefixes a model name may carry. Only these are
 // read as an engine: a slash elsewhere ("user/model:tag") is part of the name.
-var modelEngines = []string{"hailo", "ollama", "llamafile", "llamacpp"}
+var modelEngines = []string{"hailo", "ollama"}
 
 /** parseQualifiedModel splits "engine/model" into its engine and model. Only a
- * known engine prefix (hailo, ollama, llamafile, llamacpp) counts, matched
+ * known engine prefix (hailo, ollama) counts, matched
  * without regard to case; any other name, including one with a slash in it,
  * is returned whole with an empty engine.
  *
@@ -39,8 +39,56 @@ func parseQualifiedModel(name string) (string, string) {
 	return "", name
 }
 
+/** ParseQualifiedModel splits "engine/model" into its engine and model, for
+ * programs outside the package (assay). It is parseQualifiedModel: only the
+ * engines hailo and ollama count, and any other name is returned whole.
+ *
+ * Parameters:
+ *   name (string) — e.g. "hailo/llama3.2:3b" or "phi4".
+ *
+ * Returns:
+ *   string — the engine, lower case; "" when the name is not qualified.
+ *   string — the model name without the engine prefix.
+ *
+ * Example:
+ *   engine, model := harvey.ParseQualifiedModel("hailo/qwen3:1.7b") // "hailo", "qwen3:1.7b"
+ */
+func ParseQualifiedModel(name string) (string, string) { return parseQualifiedModel(name) }
+
+/** parseModelRef splits "service/model" into its service and model. The service
+ * is ollama, hailo or a name from services:, matched without regard to case; a
+ * slash after any other prefix is part of the model name. It is
+ * parseQualifiedModel made aware of the configured services (DR-0049 item 2).
+ *
+ * Parameters:
+ *   name (string) — what the user typed, e.g. "hat2/qwen2.5-coder:1.5b".
+ *
+ * Returns:
+ *   string — the service name as configured (lower case for the defaults); ""
+ *            when the name is not qualified.
+ *   string — the model name, without the service prefix when there was one.
+ *
+ * Example:
+ *   service, model := a.parseModelRef("hat2/qwen2.5-coder:1.5b") // "hat2", "qwen2.5-coder:1.5b"
+ */
+func (a *Agent) parseModelRef(name string) (string, string) {
+	if e, m := parseQualifiedModel(name); e != "" {
+		return e, m
+	}
+	i := strings.Index(name, "/")
+	if i <= 0 || i == len(name)-1 {
+		return "", name
+	}
+	for n := range a.Config.Services {
+		if strings.EqualFold(name[:i], n) {
+			return n, name[i+1:]
+		}
+	}
+	return "", name
+}
+
 // qualifiedName is m in the form accepted wherever a model is named.
-func qualifiedName(m ModelSummary) string { return m.Engine + "/" + m.Name }
+func qualifiedName(m ModelSummary) string { return m.ServiceName() + "/" + m.Name }
 
 // sameNameOnSeveralEngines reports whether every candidate has the same name
 // (ignoring case) and there is more than one: the same model name on two engines.
@@ -128,8 +176,8 @@ func qualifiedNames(cands []ModelSummary) []string {
  *   cap, _ := a.ModelCache.Get(a.cacheKeyFor("hailo/llama3.2:3b")) // key "hailo/llama3.2:3b"
  */
 func (a *Agent) cacheKeyFor(name string) string {
-	if engine, model := parseQualifiedModel(name); engine != "" {
-		return modelKey(engine, model)
+	if service, model := a.parseModelRef(name); service != "" {
+		return modelKey(service, model)
 	}
 	return a.modelKey(name)
 }
@@ -137,30 +185,35 @@ func (a *Agent) cacheKeyFor(name string) string {
 /** useStartupModel applies a model named on the command line (-m) or in
  * ollama.model. A qualified name goes to its engine. A bare name goes to the
  * engine that has it; on both Ollama and Hailo it asks at a terminal and is a
- * usage error otherwise. A name neither server lists is passed to Ollama as it
- * always was.
+ * usage error otherwise. A name the server does not list is no_input (see
+ * requireInstalled); only a server that cannot be asked lets a name through.
  *
  * Parameters:
  *   name (string)    — the value of -m or ollama.model.
  *   out  (io.Writer) — destination for any question.
  *
  * Returns:
- *   error — usage for an ambiguous or unsupported name; unavailable when the
- *           named engine's server is not running.
+ *   error — usage for an ambiguous or unsupported name; no_input for a model
+ *           that is not installed; unavailable when the named engine's server
+ *           is not running.
  *
  * Example:
  *   err := a.useStartupModel("hailo/llama3.2:3b", out)
  */
 func (a *Agent) useStartupModel(name string, out io.Writer) error {
-	engine, model := parseQualifiedModel(name)
+	if err := a.requireInstalled(name); err != nil {
+		return err
+	}
+	engine, model := a.parseModelRef(name)
+	if _, configured := a.Config.Services[engine]; configured {
+		return a.setServiceModel(engine, model)
+	}
 	switch engine {
 	case "hailo":
 		return a.setHailoModel(model)
 	case "ollama":
 		a.setOllamaModel(model)
 		return nil
-	case "llamafile", "llamacpp":
-		return Usagef("-m %s: %s models are chosen with /model use, not at start", name, engine)
 	}
 	var cands []ModelSummary
 	for _, m := range a.listFamilyModels() {
@@ -180,4 +233,68 @@ func (a *Agent) useStartupModel(name string, out io.Writer) error {
 	}
 	a.setOllamaModel(model)
 	return nil
+}
+
+/** requireInstalled checks that a model named at start-up is installed on the
+ * server it will run on: the named engine, or either server for a bare name.
+ * A server that cannot be asked proves nothing, so then the name passes and
+ * the first prompt reports the problem as before. A Hailo catalog entry that
+ * has not been pulled is not installed.
+ *
+ * Parameters:
+ *   name (string) — the value of -m or ollama.model, bare or "engine/model".
+ *
+ * Returns:
+ *   error — class no_input (66) naming the model and what is installed; nil
+ *           when the model is installed or no server could be asked.
+ *
+ * Example:
+ *   if err := a.requireInstalled("hailo/llama3.2:3b"); err != nil { return err }
+ */
+func (a *Agent) requireInstalled(name string) error {
+	engine, model := a.parseModelRef(name)
+	var have []ModelSummary
+	asked := false
+	for _, m := range a.listFamilyModels() {
+		if engine != "" && m.ServiceName() != engine {
+			continue
+		}
+		asked = true
+		if m.NotPulled {
+			continue
+		}
+		have = append(have, m)
+	}
+	if !asked {
+		return nil
+	}
+	for _, m := range have {
+		if sameModelName(m.Name, model) {
+			return nil
+		}
+	}
+	list := "none"
+	if len(have) > 0 {
+		names := make([]string, len(have))
+		for i, m := range have {
+			names[i] = m.Name
+			if engine == "" && a.ollamaFamily().HailoURL != "" {
+				names[i] = qualifiedName(m)
+			}
+		}
+		list = strings.Join(names, ", ")
+	}
+	return NoInputf("model %q is not installed (installed: %s); pull it, or name one of those", name, list)
+}
+
+// sameModelName compares model names as Ollama does: case-insensitively, with
+// no tag meaning ":latest".
+func sameModelName(have, want string) bool {
+	if !strings.Contains(want, ":") {
+		want += ":latest"
+	}
+	if !strings.Contains(have, ":") {
+		have += ":latest"
+	}
+	return strings.EqualFold(have, want)
 }

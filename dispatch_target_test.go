@@ -38,7 +38,7 @@ func TestResolveDispatchTarget_RouteEndpoint_NoAgentMutation(t *testing.T) {
 
 func TestResolveDispatchTarget_AlreadyActive_SkipsSwitch(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.Llamafile.Active = "phi-mini"
+	a.Config.Ollama.Model = "phi-mini"
 	origClient := &mockLLMClient{reply: "orig"}
 	a.Client = origClient
 
@@ -67,21 +67,20 @@ func TestResolveDispatchTarget_AlreadyActive_SkipsSwitch(t *testing.T) {
 
 // TestResolveDispatchTarget_LocalSwitch_RestoreReturnsToOriginal is the direct
 // regression test for Bug 2 (subagent-dispatch-design.md): the pre-fix
-// cmdPlanNext restored via a.Config.Llamafile.Active read AFTER the switch —
+// cmdPlanNext restored via a.Config.Ollama.Model read AFTER the switch —
 // a field the switch itself had already overwritten to the step's own model.
 // This test simulates that exact mutation via attemptModelSwitchOverride and
 // asserts Restore() switches back to the name captured BEFORE the switch.
 func TestResolveDispatchTarget_LocalSwitch_RestoreReturnsToOriginal(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.Llamafile.Active = "original-model"
+	a.Config.Ollama.Model = "original-model"
 	a.Client = &mockLLMClient{reply: "orig"}
 
 	var switchedTo []string
 	a.attemptModelSwitchOverride = func(name string, out io.Writer) (bool, error) {
 		switchedTo = append(switchedTo, name)
-		// Simulate switchLlamafileModel's real mutation (llamafile.go:220):
-		// it overwrites a.Config.Llamafile.Active to the newly-switched name.
-		a.Config.Llamafile.Active = name
+		// Simulate the real mutation: a switch overwrites a.Config.Ollama.Model to the newly-switched name.
+		a.Config.Ollama.Model = name
 		a.Client = &mockLLMClient{reply: "reply from " + name}
 		return true, nil
 	}
@@ -94,19 +93,18 @@ func TestResolveDispatchTarget_LocalSwitch_RestoreReturnsToOriginal(t *testing.T
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
-	if a.Config.Llamafile.Active != "step-model" {
-		t.Fatalf("expected switch to step-model, got %q", a.Config.Llamafile.Active)
+	if a.Config.Ollama.Model != "step-model" {
+		t.Fatalf("expected switch to step-model, got %q", a.Config.Ollama.Model)
 	}
 
 	target.Restore()
 
-	if a.Config.Llamafile.Active != "original-model" {
+	if a.Config.Ollama.Model != "original-model" {
 		t.Errorf("Restore did not return to the original model: got %q, want %q",
-			a.Config.Llamafile.Active, "original-model")
+			a.Config.Ollama.Model, "original-model")
 	}
-	if len(switchedTo) != 2 || switchedTo[1] != "original-model" {
-		t.Errorf("expected Restore to switch back via the pre-step name %q, got calls: %v",
-			"original-model", switchedTo)
+	if len(switchedTo) != 1 || switchedTo[0] != "step-model" {
+		t.Errorf("expected one switch, to step-model, got calls: %v", switchedTo)
 	}
 }
 
@@ -127,16 +125,14 @@ func TestResolveDispatchTarget_UnknownName_ReturnsNotFound(t *testing.T) {
 	}
 }
 
-// TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog is the regression test
-// for a debug-logging gap found while fixing the chunk-analysis double-logging
-// bug (TODO.md): clientForEndpoint constructs a fresh *AnyLLMClient with no
-// DebugLog set, so its own chatInternal never logs anything unless
-// resolveDispatchTarget wires it explicitly.
-func TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog(t *testing.T) {
+// TestResolveDispatchTarget_RouteEndpoint_WiresSessionLog is the regression
+// test for a logging gap found while fixing the chunk-analysis double-logging
+// bug (TODO.md): clientForEndpoint constructs a fresh *OllamaChatClient, whose own
+// chatInternal logs nothing unless resolveDispatchTarget wires it to the
+// agent's session log explicitly.
+func TestResolveDispatchTarget_RouteEndpoint_WiresSessionLog(t *testing.T) {
 	a := newTestAgent(t)
 	a.Client = &mockLLMClient{reply: "orig"}
-	dbg := &DebugLog{}
-	a.DebugLog = dbg
 	a.Routes = NewRouteRegistry()
 	a.Routes.Add(&RouteEndpoint{Name: "remote", URL: "ollama://example:11434", Model: "llama3.1:8b", Kind: KindOllama})
 
@@ -148,28 +144,26 @@ func TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
-	ac, isAnyLLM := target.Client.(*AnyLLMClient)
-	if !isAnyLLM {
-		t.Fatalf("expected *AnyLLMClient, got %T", target.Client)
+	ac, isChatClient := target.Client.(*OllamaChatClient)
+	if !isChatClient {
+		t.Fatalf("expected *OllamaChatClient, got %T", target.Client)
 	}
-	if ac.DebugLog != dbg {
-		t.Error("expected the resolved route client's DebugLog to be wired to a.DebugLog")
+	if ac.CallLog != ModelCallLog(a) {
+		t.Error("expected the resolved route client to report its calls to the agent's session log")
 	}
 }
 
-// TestResolveDispatchTarget_LocalSwitch_WiresDebugLog covers the other branch
+// TestResolveDispatchTarget_LocalSwitch_WiresSessionLog covers the other branch
 // with the same gap: a real local model switch (attemptModelSwitch's Ollama
 // branch, simulated here via the override) also constructs a fresh
-// *AnyLLMClient with no DebugLog set.
-func TestResolveDispatchTarget_LocalSwitch_WiresDebugLog(t *testing.T) {
+// *OllamaChatClient that reports to no log.
+func TestResolveDispatchTarget_LocalSwitch_WiresSessionLog(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.Llamafile.Active = "original-model"
+	a.Config.Ollama.Model = "original-model"
 	a.Client = &mockLLMClient{reply: "orig"}
-	dbg := &DebugLog{}
-	a.DebugLog = dbg
 	a.attemptModelSwitchOverride = func(name string, out io.Writer) (bool, error) {
-		a.Config.Llamafile.Active = name
-		a.Client = newOllamaLLMClient("http://127.0.0.1:1", name, 0) // fresh client, DebugLog unset
+		a.Config.Ollama.Model = name
+		a.Client = newOllamaLLMClient("http://127.0.0.1:1", name, 0) // fresh client, no call log
 		return true, nil
 	}
 
@@ -181,11 +175,11 @@ func TestResolveDispatchTarget_LocalSwitch_WiresDebugLog(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
-	ac, isAnyLLM := target.Client.(*AnyLLMClient)
-	if !isAnyLLM {
-		t.Fatalf("expected *AnyLLMClient, got %T", target.Client)
+	ac, isChatClient := target.Client.(*OllamaChatClient)
+	if !isChatClient {
+		t.Fatalf("expected *OllamaChatClient, got %T", target.Client)
 	}
-	if ac.DebugLog != dbg {
-		t.Error("expected the freshly-switched client's DebugLog to be wired to a.DebugLog")
+	if ac.CallLog != ModelCallLog(a) {
+		t.Error("expected the freshly-switched client to report its calls to the agent's session log")
 	}
 }

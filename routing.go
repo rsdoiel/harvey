@@ -15,26 +15,18 @@ const RecentContextN = 10
 type RouteKind string
 
 const (
-	// Local providers — no API key required.
-	KindOllama    RouteKind = "ollama"
-	KindLlamafile RouteKind = "llamafile"
-	KindLlamaCpp  RouteKind = "llamacpp"
-
-	// Cloud providers — credentials read from environment variables.
-	KindAnthropic RouteKind = "anthropic"
-	KindDeepSeek  RouteKind = "deepseek"
-	KindGemini    RouteKind = "gemini"
-	KindMistral   RouteKind = "mistral"
-	KindOpenAI    RouteKind = "openai"
+	// KindOllama reaches an Ollama or hailo-ollama server on this machine or
+	// the local network. It is the only kind (workspace DR-0033, DR-0042).
+	KindOllama RouteKind = "ollama"
 )
 
 /** RouteEndpoint is a named remote LLM endpoint registered for @mention dispatch.
  *
  * Fields:
  *   Name  (string)    — identifier used in @mention syntax (e.g. "pi2").
- *   URL   (string)    — endpoint URL; e.g. "ollama://host:port" or "anthropic://".
+ *   URL   (string)    — endpoint URL; e.g. "ollama://host:port".
  *   Model (string)    — default model on this endpoint; empty falls back to Config defaults.
- *   Kind  (RouteKind) — KindOllama, KindLlamafile, KindLlamaCpp, etc.
+ *   Kind  (RouteKind) — KindOllama
  *   Tools (bool)      — when true, dispatch uses ToolExecutor for tool calling.
  *
  * Example:
@@ -197,12 +189,38 @@ func recentHistory(history []Message, n int) []Message {
  *   reply, err := DispatchToEndpoint(ctx, ep, agent.History, "write a parser", cfg, agent.Tools, os.Stdout)
  */
 func DispatchToEndpoint(ctx context.Context, ep *RouteEndpoint, history []Message, prompt string, cfg *Config, registry *ToolRegistry, out io.Writer) (string, error) {
+	return DispatchToEndpointLogged(ctx, ep, history, prompt, cfg, registry, out, nil)
+}
+
+/** DispatchToEndpointLogged is DispatchToEndpoint with a session log: the
+ * endpoint's client reports its call to log (an *Agent), as part of the turn,
+ * so the routed turn is in the record. A nil log records nothing.
+ *
+ * Parameters:
+ *   ctx, ep, history, prompt, cfg, registry, out — as for DispatchToEndpoint.
+ *   log (ModelCallLog) — told of the model call; nil is accepted.
+ *
+ * Returns:
+ *   string — the endpoint's reply.
+ *   error  — if the client cannot be built or the call fails.
+ *
+ * Example:
+ *   reply, err := DispatchToEndpointLogged(ctx, ep, a.History, prompt, a.Config, a.Tools, io.Discard, a)
+ */
+func DispatchToEndpointLogged(ctx context.Context, ep *RouteEndpoint, history []Message, prompt string, cfg *Config, registry *ToolRegistry, out io.Writer, log ModelCallLog) (string, error) {
 	msgs := recentHistory(history, RecentContextN)
 	msgs = append(msgs, Message{Role: "user", Content: prompt})
 
 	client, err := clientForEndpoint(ep, cfg)
 	if err != nil {
 		return "", err
+	}
+	if ac, ok := client.(*OllamaChatClient); ok && log != nil {
+		ac.CallLog = log
+		// The routed prompt is a window of the history plus the line, sent to
+		// another server: part of the turn, but not the conversation's own
+		// prompt, so the request says which route it went to.
+		ctx = withCallPurpose(ctx, purposeRoute, map[string]any{"route": ep.Name})
 	}
 
 	var buf strings.Builder
@@ -223,20 +241,10 @@ func clientForEndpoint(ep *RouteEndpoint, cfg *Config) (LLMClient, error) {
 			model = cfg.Ollama.Model
 		}
 		return newOllamaLLMClient(ollamaBaseURL(ep.URL), model, cfg.Ollama.Timeout), nil
-	case KindLlamafile:
-		return newLlamafileLLMClient(LlamafileAPIURL(ep.URL), model, cfg.Ollama.Timeout), nil
-	case KindLlamaCpp:
-		return newLlamaCppLLMClient(LlamacppAPIURL(ep.URL), model, cfg.Ollama.Timeout), nil
-	case KindAnthropic:
-		return newAnthropicLLMClient(model)
-	case KindDeepSeek:
-		return newDeepSeekLLMClient(model)
-	case KindGemini:
-		return newGeminiLLMClient(model)
-	case KindMistral:
-		return newMistralLLMClient(model)
-	case KindOpenAI:
-		return newOpenAILLMClient(model)
+	case "llamafile", "llamacpp":
+		return nil, fmt.Errorf("route %s: the %s route kind was removed (workspace DR-0033); use an ollama:// route", ep.Name, ep.Kind)
+	case "anthropic", "deepseek", "gemini", "mistral", "openai":
+		return nil, fmt.Errorf("route %s: the %s route kind was removed (workspace DR-0042); use an ollama:// route", ep.Name, ep.Kind)
 	default:
 		return nil, fmt.Errorf("route %s: unknown endpoint kind %q", ep.Name, ep.Kind)
 	}
@@ -251,44 +259,8 @@ func ollamaBaseURL(u string) string {
 	return u
 }
 
-// LlamafileAPIURL converts a "llamafile://host:port" URL to the form
-// "http://host:port/v1" expected by the any-llm-go llamafile provider.
-// Already well-formed http(s):// URLs are left unchanged.
-func LlamafileAPIURL(u string) string {
-	base := u
-	if strings.HasPrefix(u, "llamafile://") {
-		base = "http://" + strings.TrimPrefix(u, "llamafile://")
-	}
-	if !strings.HasSuffix(base, "/v1") {
-		base = strings.TrimRight(base, "/") + "/v1"
-	}
-	return base
-}
-
-// LlamafileHealthURL returns the base URL (without /v1) suitable for health
-// probing a llamafile or llama.cpp server.
-func LlamafileHealthURL(u string) string {
-	base := LlamafileAPIURL(u)
-	return strings.TrimSuffix(base, "/v1")
-}
-
-// LlamacppAPIURL converts a "llamacpp://host:port" URL to "http://host:port/v1".
-func LlamacppAPIURL(u string) string {
-	base := u
-	if strings.HasPrefix(u, "llamacpp://") {
-		base = "http://" + strings.TrimPrefix(u, "llamacpp://")
-	}
-	if !strings.HasSuffix(base, "/v1") {
-		base = strings.TrimRight(base, "/") + "/v1"
-	}
-	return base
-}
-
-
 /** listModelsForEndpoint returns the available model IDs for the given provider.
- * For Anthropic, the v1/models SDK endpoint is called directly because the
- * any-llm-go Anthropic provider does not implement ModelLister. All other
- * providers use the standard ModelLister interface via a temporary client.
+ * It uses the standard ModelLister interface via a temporary client.
  *
  * Parameters:
  *   ctx    (context.Context) — controls the request lifetime.
@@ -301,12 +273,9 @@ func LlamacppAPIURL(u string) string {
  *   error    — non-nil on API or transport failure.
  *
  * Example:
- *   models, err := listModelsForEndpoint(ctx, KindMistral, "mistral://", cfg)
+ *   models, err := listModelsForEndpoint(ctx, KindOllama, "ollama://host:11434", cfg)
  */
 func listModelsForEndpoint(ctx context.Context, kind RouteKind, rawURL string, cfg *Config) ([]string, error) {
-	if kind == KindAnthropic {
-		return listAnthropicModels(ctx)
-	}
 	ep := &RouteEndpoint{Kind: kind, URL: rawURL}
 	client, err := clientForEndpoint(ep, cfg)
 	if err != nil {
@@ -320,8 +289,7 @@ func listModelsForEndpoint(ctx context.Context, kind RouteKind, rawURL string, c
 // made. Used by /route list and /route set to display and validate tool status.
 func kindSupportsTools(kind RouteKind) bool {
 	switch kind {
-	case KindAnthropic, KindDeepSeek, KindGemini, KindMistral, KindOpenAI,
-		KindOllama, KindLlamafile, KindLlamaCpp:
+	case KindOllama:
 		return true
 	}
 	return false
@@ -351,4 +319,34 @@ func resolveTagAlias(cfg *Config, tag string) (model string, found bool) {
 	}
 	// First entry from AliasesByTag (stable alphabetical order) is the winner.
 	return cfg.ModelAliases[names[0]].Model, true
+}
+
+/** skippedRoutes reports the persisted routes that were left out because their
+ * kind was removed (workspace DR-0033, DR-0042). At a terminal each is a
+ * warning and the session goes on without it; without a terminal nobody can
+ * fix the file, so the run stops with a configuration error (exit 78).
+ *
+ * Parameters:
+ *   out         (io.Writer) — destination for the warnings.
+ *   interactive (bool)      — true when a person is at a terminal.
+ *
+ * Returns:
+ *   error — a *ClassedError of ClassConfig when routes were skipped and nobody is at a terminal; nil otherwise.
+ *
+ * Example:
+ *   if err := a.skippedRoutes(out, interactive); err != nil { return err }
+ */
+func (a *Agent) skippedRoutes(out io.Writer, interactive bool) error {
+	if len(a.Config.RemovedRoutes) == 0 {
+		return nil
+	}
+	var names []string
+	for _, ep := range a.Config.RemovedRoutes {
+		names = append(names, "@"+ep.Name)
+		fmt.Fprintf(out, "  ⚠  route @%s (%s) skipped: the %s route kind was removed (workspace DR-0033, DR-0042). Re-add it with /route add NAME ollama://host:port; it is dropped from routes.json the next time routes are saved.\n", ep.Name, ep.URL, ep.Kind)
+	}
+	if !interactive {
+		return Configf("agents/routes.json has routes of a removed kind (%s); edit the file or re-add them as ollama:// routes", strings.Join(names, ", "))
+	}
+	return nil
 }

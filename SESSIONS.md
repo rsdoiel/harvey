@@ -32,11 +32,6 @@ harvey
 
 # Explicit recording path
 harvey --record-file mysession.spmd
-
-# In REPL, check recording status
-harvey> /record
-  Recording: ON
-  File: /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
 ```
 
 ### Continue a Previous Session
@@ -147,7 +142,7 @@ Harvey uses a **multi-character model** in Fountain files to distinguish between
 | `ROUTE_NAME` | Uppercase route name (e.g., `PI2`, `CLAUDE`) | Routed endpoint responses |
 
 **Character Attribution Rules:**
-- **HARVEY** = local Ollama/Llamafile interactions
+- **HARVEY** = local Ollama interactions
 - **ROUTE_NAME** = responses from routed endpoints (when `@mention` routing is used)
 - **MODEL_NAME** = direct model responses (cloud/direct, or when `@modelname` is used)
 - **INT.** scenes = Harvey is involved as an intermediary
@@ -407,28 +402,6 @@ harvey --sessions-dir custom/sessions
 
 
 ## Session Commands
-
-### `/record` — Manage Recording
-
-| Command | Description |
-|---------|-------------|
-| `/record` | Show current recording status |
-| `/record on` | Start recording (default at startup) |
-| `/record off` | Stop recording current session |
-| `/record file <path>` | Change recording file path |
-
-**Examples:**
-```
-harvey> /record
-  Recording: ON
-  File: /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
-
-harvey> /record off
-  Recording stopped.
-
-harvey> /record on
-  Recording resumed to /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
-```
 
 ### `/session` — Session Operations
 

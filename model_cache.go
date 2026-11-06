@@ -163,6 +163,9 @@ type ModelCapability struct {
 	// though no context window is advertised. Set by the probe seed, by
 	// /model limit, or learned from a failure; a re-probe never overwrites it.
 	MaxPromptTokens int
+	// KVBytesPerToken is the estimated key-value cache per token of context, in
+	// bytes; 0 = unknown. It and SizeBytes let harvey fit the window to memory.
+	KVBytesPerToken int64
 	ProbeLevel           string
 	ProbedAt             time.Time
 }
@@ -239,6 +242,7 @@ func OpenModelCache(ws *Workspace, customPath string) (*ModelCache, error) {
 	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN supports_tagged_blocks INTEGER NOT NULL DEFAULT -1`)
 	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN tool_mode TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN max_prompt_tokens INTEGER NOT NULL DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN kv_bytes_per_token INTEGER NOT NULL DEFAULT 0`)
 	return &ModelCache{db: db, path: dbPath}, nil
 }
 
@@ -274,7 +278,7 @@ func (mc *ModelCache) Close() error {
 func (mc *ModelCache) Get(name string) (*ModelCapability, error) {
 	const q = `
 	SELECT name, family, parameter_size, quantization, size_bytes,
-	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, max_prompt_tokens, probe_level, probed_at
+	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, max_prompt_tokens, kv_bytes_per_token, probe_level, probed_at
 	FROM model_capabilities WHERE name = ?`
 	row := mc.db.QueryRow(q, name)
 	c, err := scanCapability(row)
@@ -304,8 +308,8 @@ func (mc *ModelCache) Set(cap *ModelCapability) error {
 	const q = `
 	INSERT INTO model_capabilities
 	    (name, family, parameter_size, quantization, size_bytes,
-	     context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, max_prompt_tokens, probe_level, probed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	     context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, max_prompt_tokens, kv_bytes_per_token, probe_level, probed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(name) DO UPDATE SET
 	    family                 = excluded.family,
 	    parameter_size         = excluded.parameter_size,
@@ -317,13 +321,14 @@ func (mc *ModelCache) Set(cap *ModelCapability) error {
 	    supports_tagged_blocks = excluded.supports_tagged_blocks,
 	    tool_mode              = excluded.tool_mode,
 	    max_prompt_tokens      = excluded.max_prompt_tokens,
+	    kv_bytes_per_token     = excluded.kv_bytes_per_token,
 	    probe_level            = excluded.probe_level,
 	    probed_at              = excluded.probed_at`
 	_, err := mc.db.Exec(q,
 		cap.Name, cap.Family, cap.ParameterSize, cap.Quantization,
 		cap.SizeBytes, cap.ContextLength,
 		int(cap.SupportsTools), int(cap.SupportsEmbed), int(cap.SupportsTaggedBlocks),
-		cap.ToolMode, cap.MaxPromptTokens, cap.ProbeLevel, cap.ProbedAt,
+		cap.ToolMode, cap.MaxPromptTokens, cap.KVBytesPerToken, cap.ProbeLevel, cap.ProbedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("model_cache: set %s: %w", cap.Name, err)
@@ -364,7 +369,7 @@ func (mc *ModelCache) Delete(name string) error {
 func (mc *ModelCache) All() ([]ModelCapability, error) {
 	const q = `
 	SELECT name, family, parameter_size, quantization, size_bytes,
-	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, max_prompt_tokens, probe_level, probed_at
+	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, max_prompt_tokens, kv_bytes_per_token, probe_level, probed_at
 	FROM model_capabilities ORDER BY name`
 	rows, err := mc.db.Query(q)
 	if err != nil {
@@ -400,7 +405,7 @@ func scanCapability(s scanner) (*ModelCapability, error) {
 		&c.Name, &c.Family, &c.ParameterSize, &c.Quantization,
 		&c.SizeBytes, &c.ContextLength,
 		&tools, &embed, &tagged,
-		&c.ToolMode, &c.MaxPromptTokens, &c.ProbeLevel, &probedAt,
+		&c.ToolMode, &c.MaxPromptTokens, &c.KVBytesPerToken, &c.ProbeLevel, &probedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -419,7 +424,7 @@ func scanCapability(s scanner) (*ModelCapability, error) {
  * the key valid.
  *
  * Parameters:
- *   engine (string) — backend name, e.g. "ollama", "hailo", "llamacpp"; "" = ollama.
+ *   engine (string) — backend name, e.g. "ollama", "hailo"; "" = ollama.
  *   model  (string) — full model name, e.g. "llama3.2:3b".
  *
  * Returns:
@@ -449,6 +454,10 @@ func modelKey(engine, model string) string {
  *   cap, _ := a.ModelCache.Get(a.modelKey(ac.ModelName()))
  */
 func (a *Agent) modelKey(model string) string {
+	// A client on a service of its own name (DR-0049) keys by that name.
+	if ac, ok := a.Client.(*OllamaChatClient); ok && ac.Service() != ac.EngineKind() {
+		return modelKey(ac.Service(), model)
+	}
 	if a.Backend == nil {
 		return modelKey("", model)
 	}

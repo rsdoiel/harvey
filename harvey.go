@@ -9,9 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
-	anyllm "github.com/mozilla-ai/any-llm-go"
 	knowledge "github.com/rsdoiel/knowledge"
 )
 
@@ -95,24 +95,24 @@ func (s ChatStats) FormatWithModels(models []string) string {
  * Fields:
  *   Role       (string)              — "system", "user", or "assistant".
  *   Content    (string)              — message body; ignored when Parts is non-empty.
- *   Parts      ([]anyllm.ContentPart) — multimodal content parts (e.g. image + text);
+ *   Parts      ([]ContentPart) — multimodal content parts (e.g. image + text);
  *                                      when non-empty, overrides Content.
- *   ToolCalls  ([]anyllm.ToolCall)  — tool call requests from the assistant.
+ *   ToolCalls  ([]ToolCall)  — tool call requests from the assistant.
  *   ToolCallID (string)             — correlates a tool-result message to its request.
  *
  * Example:
  *   msg := Message{Role: "user", Content: "Hello!"}
  */
 type Message struct {
-	Role       string               `json:"role"`
-	Content    string               `json:"content"`
-	Parts      []anyllm.ContentPart `json:"parts,omitempty"`
-	ToolCalls  []anyllm.ToolCall    `json:"tool_calls,omitempty"`
-	ToolCallID string               `json:"tool_call_id,omitempty"`
+	Role       string        `json:"role"`
+	Content    string        `json:"content"`
+	Parts      []ContentPart `json:"parts,omitempty"`
+	ToolCalls  []ToolCall    `json:"tool_calls,omitempty"`
+	ToolCallID string        `json:"tool_call_id,omitempty"`
 }
 
 /** LLMClient is the interface implemented by each LLM backend (Ollama,
- * Llamafile, Anthropic, OpenAI, etc.).
+ * hailo-ollama).
  *
  * Methods:
  *   Name()   string                                    — human-readable backend identifier.
@@ -159,27 +159,25 @@ type Agent struct {
 	Workspace         *Workspace
 	KB                *knowledge.KnowledgeBase
 	ModelCache        *ModelCache  // capability cache for installed Ollama models; nil until initModelCache runs
-	Rag               *RagStore    // RAG chunk store; nil when RAG is not configured
-	RagOn             bool         // when true, top-K chunks are injected before each Chat call
 	SessionsDir       string       // absolute path to the sessions directory
 	Skills            SkillCatalog // skills discovered at startup; nil until loadSkills runs
 	Recorder          *Recorder
 	In                io.Reader       // source for interactive prompts; defaults to os.Stdin
 	stdin             *os.File        // the file Run reads from; nil means os.Stdin (a test seam)
+	stderr            io.Writer       // where notices that must not reach the session's input go; nil means os.Stderr (a test seam)
 	ragWarned         map[string]bool // retrieval failures already reported this session, by message
 	pendingInput      []string        // lines handed back to the REPL by a prompt that was given a command instead of an answer
 	Out               io.Writer       // destination for interactive output; defaults to os.Stdout
-	PinnedContext     string          // persists across /clear; re-injected after system prompt
+	Pins              []Pin           // kept in front of the model for the session; /clear keeps them
 	Routes            *RouteRegistry  // registered remote endpoints; nil when routing not configured
 	ActiveSkill       string          // name of the most recently loaded skill; "" when none
 	ActiveSkillSet    string          // name of the currently loaded skill-set bundle; "" when none
 	Tools             *ToolRegistry   // schema-based tool registry; nil when tools are disabled
 	Memory            *MemorySystem   // session-scoped memory subsystems; nil until initMemory runs
-	LastRAGInfo       *RAGAugmentInfo // set after each chat turn that fires RAG; cleared by ClearHistory
 	LastObservationID int64           // ID of the most recently recorded /kb observe; cleared by ClearHistory
 	// toolsReliableOverride, when non-nil, overrides the capability-based logic
 	// in toolsReliable(). Set in tests to simulate a known-reliable or
-	// known-unreliable model without requiring a real AnyLLMClient.
+	// known-unreliable model without requiring a real OllamaChatClient.
 	toolsReliableOverride func() bool
 	// learnDrafterOverride, when non-nil, replaces how `/kb learn` resolves its
 	// drafting model. Set in tests to supply a fake Drafter without a real
@@ -189,10 +187,7 @@ type Agent struct {
 	learnDrafterOverride func(name string, out io.Writer) (Drafter, func(), error)
 	// attemptModelSwitchOverride, when non-nil, overrides attemptModelSwitch in
 	// resolveDispatchTarget's local-swap branch. Set in tests to simulate a
-	// successful model switch without spawning a real llamafile/llama.cpp
-	// server process (attemptModelSwitch's llamafile-registry branch does so
-	// via switchLlamafileModel → StartLlamafileService, impractical to exercise
-	// in a unit test).
+	// successful model switch without contacting a server.
 	attemptModelSwitchOverride func(name string, out io.Writer) (bool, error)
 	memoryContextPending       bool   // true after ClearHistory until first user turn injects memories
 	catalogBlock               string // the skills catalog appended to Config.SystemPrompt by loadSkills; the first layer dropped to fit a prompt limit
@@ -201,13 +196,28 @@ type Agent struct {
 	sessionCompressed          bool   // true if rolling summary fired at least once this session
 	sessionTurns               int    // total completed user turns in this session (never rolls off)
 	commands                   map[string]*Command
-	statHistory                []ChatStats    // rolling window of recent turn stats
-	AuditBuffer                *AuditBuffer   // in-memory audit log ring buffer; nil until initialized
-	DebugLog                   *DebugLog      // JSONL diagnostic log; nil when --debug not set
-	Backend                    ManagedBackend // active inference backend; nil when no backend is wired
-	hailoDevicePath            string         // Hailo card device node; "" = /dev/hailo0 (tests set it)
-	hailoUnitPath              string         // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service
-	ActiveRoute                string         // session-sticky route name; when set, prompts are auto-dispatched via @NAME
+	statHistory                []ChatStats       // rolling window of recent turn stats
+	AuditBuffer                *AuditBuffer      // in-memory audit log ring buffer; nil until initialized
+	SessionLog                 *SessionLog       // append-only JSONL record of this session (DR-0036); nil when none is open
+	logTurn                    int               // user turns logged this session; the turn field of the events
+	logLastID                  string            // id of the last event appended; the tail.to of a manifest
+	logFirstDialogID           string            // id of the first user_input; the tail.from of a manifest
+	sessionLogWarned           bool              // a failed log write has been reported once
+	logModel                   ModelRef          // backend and model last written to the log; the from of the next model_switch
+	logSystemID                string            // id of the system prompt text last written to the log
+	kbRun                      *kbRun            // identities and injections the running /kb subcommand reports; nil outside a logged one
+	permCall                   permissionCall    // the tool call in flight, so a permission event can name it
+	permScope                  string            // "session" once the author has answered all to a write offer; "" otherwise
+	lastManifest               *PromptManifest   // what assembleForTurn chose for the turn in progress; nil when it did not run
+	summaryRetryAfter          int               // do not try a summary before this turn, after one failed
+	logInputText               string            // the line last logged as user_input, to tell a sent message that is the same
+	toolCallEvents             map[string]string // provider call id -> tool_call event id, for compaction sources
+	offerIndex, offerOf        int               // which of how many tagged blocks the running write offer is on; 0 outside one
+	Backend                    ManagedBackend    // active inference backend; nil when no backend is wired
+	hailoDevicePath            string            // Hailo card device node; "" = /dev/hailo0 (tests set it)
+	serviceCountCache          int               // serviceCount()+1 once worked out; 0 = not yet
+	hailoUnitPath              string            // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service
+	ActiveRoute                string            // session-sticky route name; when set, prompts are auto-dispatched via @NAME
 	// ActiveStatus is the current turn's StatusReporter, set by runChatTurn
 	// alongside the ToolExecutor's own Status field and cleared once the
 	// turn's spinner stops. Lets tool handlers (which capture *Agent via
@@ -215,12 +225,19 @@ type Agent struct {
 	// SensorEvent during their own execution without a ToolHandler signature
 	// change. nil outside an active tool-calling turn.
 	ActiveStatus StatusReporter
+
+	// windowMu guards windowLimits, the context window fixed for each Ollama
+	// model when it was selected (design/memory-aware-context-window-design.md).
+	windowMu     sync.Mutex
+	windowLimits map[string]WindowLimit
 }
 
 /** effectiveContextLimit returns the context-window size in tokens for the
- * active model. It prefers the explicit --context flag value; when that is
- * zero it falls back to the probed ContextLength stored in the model cache.
- * Returns 0 when neither source is available.
+ * active model. It prefers the explicit ollama.context_length; when that is
+ * zero it is the window limit fixed for the model when it was selected: the
+ * model's own window, limited by the ceiling and by what this machine's memory
+ * can hold (see SafeWindow). It is the number harvey budgets against and the
+ * num_ctx it asks the server for. Returns 0 when neither source is available.
  *
  * Returns:
  *   int — token limit, or 0 if unknown.
@@ -230,23 +247,11 @@ type Agent struct {
  *   if limit > 0 { fmt.Printf("window: %d tokens\n", limit) }
  */
 func (a *Agent) effectiveContextLimit() int {
-	// Llamafile: check the active entry's ContextLength first (user config or probed).
-	// Skip when a non-llamafile backend is active — it would read a stale entry.
-	isLlamafile := a.Backend == nil || a.Backend.Name() == "llamafile"
-	if isLlamafile && a.Config.Llamafile.Active != "" {
-		if entry := a.Config.ActiveLlamafileEntry(); entry != nil && entry.ContextLength > 0 {
-			return entry.ContextLength
-		}
-	}
 	if a.Config.Ollama.ContextLength > 0 {
 		return a.Config.Ollama.ContextLength
 	}
-	if a.ModelCache != nil {
-		if ac, ok := a.Client.(*AnyLLMClient); ok {
-			if cap, _ := a.ModelCache.Get(a.modelKey(ac.ModelName())); cap != nil && cap.ContextLength > 0 {
-				return cap.ContextLength
-			}
-		}
+	if ac, ok := a.Client.(*OllamaChatClient); ok {
+		return a.windowLimitFor(ac.ModelName()).N
 	}
 	return 0
 }
@@ -292,6 +297,7 @@ func NewAgent(cfg *Config, ws *Workspace) *Agent {
 		a.Tools = NewToolRegistry()
 		RegisterBuiltinTools(a.Tools, a)
 	}
+	a.wireAudit()
 	return a
 }
 
@@ -321,8 +327,8 @@ func (a *Agent) AddMessage(role, content string) {
  *   a.foldBackTurn(input, reply)
  */
 func (a *Agent) foldBackTurn(userContent, assistantContent string) {
-	a.AddMessage("user", userContent)
-	a.AddMessage("assistant", assistantContent)
+	a.addPrompt("user", "fold", userContent)
+	a.addPrompt("assistant", "fold", assistantContent)
 }
 
 /** AddMessageParts appends a multimodal message to the conversation history.
@@ -331,15 +337,15 @@ func (a *Agent) foldBackTurn(userContent, assistantContent string) {
  *
  * Parameters:
  *   role  (string)              — "user" (multimodal messages are always user-role).
- *   parts ([]anyllm.ContentPart) — ordered content parts (text, image_url, etc.).
+ *   parts ([]ContentPart) — ordered content parts (text, image_url, etc.).
  *
  * Example:
- *   agent.AddMessageParts("user", []anyllm.ContentPart{
+ *   agent.AddMessageParts("user", []ContentPart{
  *       {Type: "text", Text: "[attached: photo.jpg]"},
- *       {Type: "image_url", ImageURL: &anyllm.ImageURL{URL: "data:image/jpeg;base64,..."}},
+ *       {Type: "image_url", ImageURL: &ImageURL{URL: "data:image/jpeg;base64,..."}},
  *   })
  */
-func (a *Agent) AddMessageParts(role string, parts []anyllm.ContentPart) {
+func (a *Agent) AddMessageParts(role string, parts []ContentPart) {
 	a.History = append(a.History, Message{Role: role, Parts: parts})
 }
 
@@ -350,26 +356,51 @@ func (a *Agent) AddMessageParts(role string, parts []anyllm.ContentPart) {
  *   agent.ClearHistory()
  */
 func (a *Agent) ClearHistory() {
+	before := a.historySnapshot()
 	if a.Config.SystemPrompt != "" {
 		text, _ := a.systemPromptText()
 		a.History = []Message{{Role: "system", Content: text}}
 	} else {
 		a.History = nil
 	}
+	a.logRewrite("clear", before) // the pinned context below is added, and logged, after it
 	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Memory.InjectOnStart {
 		a.memoryContextPending = true
 	}
-	if a.PinnedContext != "" {
-		a.AddMessage("user", "[pinned context]\n\n"+a.PinnedContext)
+	for _, p := range a.Pins {
+		a.addPrompt("user", "pinned", p.Message)
 	}
 	a.ActiveSkill = ""
-	a.LastRAGInfo = nil
 	a.LastObservationID = 0
+}
+
+// defaultMemoryBudget is the recall budget, in tokens, when the active model's
+// context window or the memory share is not known.
+const defaultMemoryBudget = 512
+
+/** memoryBudget returns the most tokens recalled knowledge may take: the
+ * configured share (memory.budget_pct) of the active model's context window,
+ * the one figure effectiveContextLimit gives every other caller (the explicit
+ * window, else the model cache's). It is defaultMemoryBudget when the window
+ * or the share is unknown.
+ *
+ * Returns:
+ *   int — tokens.
+ *
+ * Example:
+ *   budget := a.memoryBudget()
+ */
+func (a *Agent) memoryBudget() int {
+	w := a.effectiveContextLimit()
+	if w <= 0 || a.Config.Memory.BudgetPct <= 0 {
+		return defaultMemoryBudget
+	}
+	return int(float64(w) * a.Config.Memory.BudgetPct)
 }
 
 // injectMemoryContext retrieves memories from all silos via UnifiedMemory and
 // injects the formatted context block as a user message. The token budget is
-// derived from OllamaContextLength * BudgetPct (fallback 512 when unconfigured).
+// a.memoryBudget().
 func (a *Agent) injectMemoryContext(query string) {
 	if !a.Config.Memory.Enabled || !a.Config.Memory.InjectOnStart || a.Workspace == nil {
 		return
@@ -378,163 +409,23 @@ func (a *Agent) injectMemoryContext(query string) {
 		return
 	}
 
-	var embedder Embedder
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = a.embedderFor(entry)
-	}
+	var embedder Embedder = a.memoryEmbedder()
 
-	budget := 512
-	if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
-		budget = int(float64(a.Config.Ollama.ContextLength) * a.Config.Memory.BudgetPct)
-	}
+	budget := a.memoryBudget()
 
+	recallCall := a.logKBRetrievalCall(query)
 	results, err := a.Memory.Unified.Recall(query, embedder, budget)
+	recallResult := a.logKBRetrievalResult(recallCall, results, err)
 	if err != nil || len(results) == 0 {
 		return
-	}
-	if a.Recorder != nil {
-		_ = a.Recorder.RecordContextRecall(results)
 	}
 	var totalTokens int
 	for _, r := range results {
 		totalTokens += r.Tokens
 	}
 	a.sessionInjectedTokens += totalTokens
-	a.AddMessage("user", FormatContext(results))
-}
-
-/** WriteHandoff extracts a structural summary from the current conversation
- * history and writes it as a Markdown document to handoffDir, per
- * HANDOFF_FORMAT.md (Laboratory workspace `agents/decisions/0005`). The file
- * is named by timestamp and uses the .md extension so `kb learn` and
- * learnCandidates can process it in a future session.
- *
- * No LLM call is made, so this carries only a `## State Recap` section, not
- * a full carried-forward-and-corrected recap in HANDOFF_FORMAT.md's sense —
- * it does not read or repoint STATE.md, since a heuristic delta snapshot is
- * exactly the kind of hand-off that spec warns should not become "current
- * state." `scope: workspace` and an empty `projects:` list are used
- * unconditionally: Harvey's Workspace has no concept of which experiment a
- * conversation belongs to, so this cannot claim a project tier honestly.
- *
- * The summary is built from three heuristics:
- *   - Last topics:     first line of the last three assistant messages.
- *   - Files touched:   path-like tokens (containing "/" but not "://") from
- *                      the last twenty turns, capped at five unique paths.
- *   - Open questions:  user messages whose first line ends with "?", capped
- *                      at three.
- *
- * Parameters:
- *   store      (*MemoryStore) — open memory store; used to read the current
- *                              profile name. May be nil.
- *   handoffDir (string)       — directory to write the file into.
- *
- * Returns:
- *   string — absolute path of the file written.
- *   error  — on write failure.
- *
- * Example:
- *   path, err := a.WriteHandoff(store, handoffDir)
- */
-func (a *Agent) WriteHandoff(store *MemoryStore, handoffDir string) (string, error) {
-	ts := time.Now().UTC()
-	filename := ts.Format("20060102-150405") + "-profile-switch.md"
-	path := filepath.Join(handoffDir, filename)
-
-	profileName := "(unknown)"
-	if store != nil {
-		if metas, err := store.List(string(MemoryTypeWorkspaceProfile)); err == nil && len(metas) > 0 {
-			profileName = metas[0].Description
-		}
-	}
-
-	window := a.History
-	if len(window) > 20 {
-		window = window[len(window)-20:]
-	}
-
-	var lastTopics, openQuestions []string
-	fileSeen := map[string]bool{}
-	var filesTouched []string
-
-	// Reverse-scan for last topics (last 3 assistant replies).
-	for i := len(a.History) - 1; i >= 0 && len(lastTopics) < 3; i-- {
-		if a.History[i].Role != "assistant" {
-			continue
-		}
-		line := strings.SplitN(strings.TrimSpace(a.History[i].Content), "\n", 2)[0]
-		if line != "" {
-			lastTopics = append([]string{line}, lastTopics...)
-		}
-	}
-
-	for _, m := range window {
-		content := m.Content
-		// Open questions from user turns.
-		if m.Role == "user" && len(openQuestions) < 3 {
-			first := strings.SplitN(strings.TrimSpace(content), "\n", 2)[0]
-			if strings.HasSuffix(strings.TrimRight(first, " \t"), "?") {
-				openQuestions = append(openQuestions, first)
-			}
-		}
-		// Path-like tokens from any turn.
-		if len(filesTouched) < 5 {
-			for _, word := range strings.Fields(content) {
-				word = strings.Trim(word, ".,;:`\"'()")
-				if len(word) < 3 || len(word) > 80 {
-					continue
-				}
-				if !strings.Contains(word, "/") || strings.Contains(word, "://") {
-					continue
-				}
-				if !fileSeen[word] {
-					fileSeen[word] = true
-					filesTouched = append(filesTouched, word)
-					if len(filesTouched) >= 5 {
-						break
-					}
-				}
-			}
-		}
-	}
-
-	var sb strings.Builder
-	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("title: \"Profile switch: %s\"\n", profileName))
-	sb.WriteString(fmt.Sprintf("date: \"%s\"\n", ts.Format("2006-01-02")))
-	sb.WriteString("author: harvey (auto)\n")
-	sb.WriteString("scope: workspace\n")
-	sb.WriteString("projects: []\n")
-	sb.WriteString("previous: \"\"\n")
-	sb.WriteString("---\n\n")
-	sb.WriteString("## State Recap\n\n")
-	sb.WriteString(fmt.Sprintf("### Current State\n\nProfile switched from: %s.\n\n", profileName))
-	if len(lastTopics) > 0 {
-		sb.WriteString("### Recent Topics\n\n")
-		for _, t := range lastTopics {
-			sb.WriteString("- " + t + "\n")
-		}
-		sb.WriteString("\n")
-	}
-	if len(filesTouched) > 0 {
-		sb.WriteString("### Important Files\n\n")
-		for _, f := range filesTouched {
-			sb.WriteString("- " + f + "\n")
-		}
-		sb.WriteString("\n")
-	}
-	if len(openQuestions) > 0 {
-		sb.WriteString("### Known Problems / Open Questions\n\n")
-		for _, q := range openQuestions {
-			sb.WriteString("- " + q + "\n")
-		}
-		sb.WriteString("\n")
-	}
-
-	if err := os.WriteFile(path, []byte(sb.String()), 0o644); err != nil {
-		return "", err
-	}
-	return path, nil
+	a.addPrompt("user", "memory", FormatContext(results))
+	a.logKBInjections(recallResult, results)
 }
 
 /** HasPermission checks if the given permission is allowed for a path.

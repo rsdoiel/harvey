@@ -722,3 +722,21 @@ func initHighlighters(r *LanguageRegistry) {
 		r.SetHighlighter(id, h)
 	}
 }
+
+// cKeywords is the set of reserved C and C++ keywords used to filter false
+// positives in function-name extraction.
+var cKeywords = map[string]bool{
+	"if": true, "else": true, "for": true, "while": true, "do": true,
+	"switch": true, "case": true, "default": true, "return": true,
+	"break": true, "continue": true, "goto": true, "sizeof": true,
+	"typedef": true, "struct": true, "union": true, "enum": true,
+	"void": true, "int": true, "char": true, "long": true, "short": true,
+	"unsigned": true, "signed": true, "float": true, "double": true,
+	"const": true, "static": true, "extern": true, "register": true,
+	"volatile": true, "inline": true, "restrict": true, "auto": true,
+	"class": true, "namespace": true, "template": true,
+	"public": true, "private": true, "protected": true,
+	"virtual": true, "override": true, "new": true, "delete": true,
+	"this": true, "nullptr": true, "true": true, "false": true,
+	"try": true, "catch": true, "throw": true,
+}

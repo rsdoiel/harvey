@@ -33,7 +33,7 @@ go test ./...
 go test -v -run TestWorkspace
 
 # Test a specific package
-go test -v ./... -run TestRagStore
+go test -v ./... -run TestWorkspace
 
 # Test with verbose output
 go test -v ./...
@@ -63,8 +63,8 @@ Harvey follows Go's standard testing conventions with `_test.go` files alongside
 harvey/
 ├── workspace.go          # Source file
 ├── workspace_test.go     # Tests for workspace.go
-├── rag_support.go       # Source file
-├── rag_support_test.go  # Tests for rag_support.go
+├── ollama_chat.go       # Source file
+├── ollama_chat_test.go  # Tests for ollama_chat.go
 ├── recorder.go          # Source file
 ├── recorder_test.go     # Tests for recorder.go
 ├── commands.go          # Source file
@@ -89,10 +89,9 @@ Harvey tests are organized into several categories based on the testing tier sys
 | Test File | What It Tests | Key Tests |
 |-----------|--------------|-----------|
 | `workspace_test.go` | Workspace file operations | `TestWorkspaceNewWorkspace`, `TestWorkspaceAbsPath_valid`, `TestWorkspaceReadWriteFile` |
-| `rag_support_test.go` | RAG store functionality | `TestIngestAndQuery`, `TestEmbeddingMismatch`, `TestCosineSimilarity` |
+| `ollama_chat_test.go` | Ollama chat client (a fake /api/chat server) | `TestOllamaChat_writesContentAndMapsUsage`, `TestOllamaChat_toolCallInAChunk` |
 | `recorder_test.go` | Session recording | `TestRecorderCreation`, `TestRecordTurn`, `TestFountainSyntax` |
 | `knowledge_test.go` | Knowledge base operations | `TestOpenKnowledgeBase`, `TestProjectCRUD`, `TestObservationCRUD` |
-| `encoderfile_embedder_test.go` | Custom embedder | `TestEncoderfileEmbedder_Embed`, `TestProbeEncoderfile` |
 | `routing_test.go` | @mention routing parsing | `TestParseAtMention_valid`, `TestParseAtMention_noMention` |
 | `commands_test.go` | Command handlers | Various command-specific tests |
 | `tier1_test.go` | File operations (read, write, search) | Tier 1 command tests |
@@ -139,93 +138,14 @@ func TestExtractModelName(t *testing.T) {
 
 Integration tests verify that multiple components work together correctly.
 
-**Example: Testing RAG ingest and query**
+**Example: Testing the chat client against a fake server**
 
-```go
-// From rag_support_test.go
-func TestIngestAndQuery(t *testing.T) {
-    dbPath := "test_rag.db"
-    defer os.Remove(dbPath)
-    
-    store, err := NewRagStore(dbPath, "semantic-mock")
-    if err != nil {
-        t.Fatal(err)
-    }
-    
-    embedder := &precomputedEmbedder{
-        name: "semantic-mock",
-        vectors: map[string][]float64{
-            "The sky is blue": {1.0, 0.1, 0.0, 0.0},
-            "What color is the sky?": {0.9, 0.1, 0.0, 0.0},
-        },
-    }
-    
-    // Ingest documents
-    err = store.Ingest("", []string{"The sky is blue"}, embedder)
-    if err != nil {
-        t.Fatal(err)
-    }
-    
-    // Query and verify results
-    results, err := store.Query("What color is the sky?", embedder, 1)
-    if err != nil {
-        t.Fatal(err)
-    }
-    
-    if len(results) != 1 {
-        t.Errorf("expected 1 result, got %d", len(results))
-    }
-    if results[0].Content != "The sky is blue" {
-        t.Errorf("expected 'The sky is blue', got %q", results[0].Content)
-    }
-}
-```
-
-**Key characteristics:**
-- Tests component interactions
-- May use temporary files/databases
-- Clean up after themselves (defer os.Remove)
-- Still deterministic
+`ollama_chat_test.go` starts an `httptest` server that speaks `/api/chat` and drives the real `OllamaChatClient` through it, so
+the whole request and the streamed reply are exercised with no model.
 
 ### Mocking External Dependencies
 
 Harvey uses **mock implementations** to test code that depends on external services (LLMs, embedders, etc.).
-
-#### Mock Embedders
-
-```go
-// From rag_support_test.go
-
-// mockEmbedder satisfies the Embedder interface for mismatch-protection tests
-type mockEmbedder struct {
-    name string
-}
-
-func (m *mockEmbedder) Name() string { return m.name }
-func (m *mockEmbedder) Embed(text string) ([]float64, error) {
-    vec := make([]float64, 4)
-    for i, r := range text {
-        vec[i%4] += float64(r)
-    }
-    return vec, nil
-}
-
-// precomputedEmbedder returns fixed vectors for known inputs
-// Makes cosine-similarity ranking deterministic and semantically intentional
-type precomputedEmbedder struct {
-    name    string
-    vectors map[string][]float64
-}
-
-func (p *precomputedEmbedder) Name() string { return p.name }
-func (p *precomputedEmbedder) Embed(text string) ([]float64, error) {
-    v, ok := p.vectors[text]
-    if !ok {
-        return nil, fmt.Errorf("no vector registered for %q", text)
-    }
-    return v, nil
-}
-```
 
 #### Mock LLM Client
 
@@ -530,71 +450,7 @@ func TestWithTempDir(t *testing.T) {
 }
 ```
 
-### Testing SQLite Operations
-
-```go
-func TestRagStoreOperations(t *testing.T) {
-    // Create a temporary database
-    dbPath := filepath.Join(t.TempDir(), "test.db")
-    
-    store, err := NewRagStore(dbPath, "test-model")
-    if err != nil {
-        t.Fatal(err)
-    }
-    defer store.Close()
-    
-    // Test operations
-    mock := &mockEmbedder{name: "test-model"}
-    err = store.Ingest("", []string{"test chunk"}, mock)
-    if err != nil {
-        t.Fatal(err)
-    }
-    
-    // Database file is automatically cleaned up with temp dir
-}
-```
-
-### Testing Error Conditions
-
-```go
-func TestErrorConditions(t *testing.T) {
-    // Test embedding model mismatch
-    store, _ := NewRagStore("test.db", "model-a")
-    defer store.Close()
-    
-    mock := &mockEmbedder{name: "model-b"} // Different model
-    
-    err := store.Ingest("", []string{"test"}, mock)
-    if err == nil {
-        t.Error("Expected embedding model mismatch error")
-    }
-    if !strings.Contains(err.Error(), "mismatch") {
-        t.Errorf("Expected mismatch error, got: %v", err)
-    }
-}
-```
-
 ## Testing Specific Features
-
-### Testing RAG
-
-The RAG system has extensive tests in `rag_support_test.go`:
-
-**Key test areas:**
-- Embedding model consistency enforcement
-- Ingest and query pipeline
-- Cosine similarity computation
-- Vector serialization/deserialization
-- Chunk storage and retrieval
-
-**Running RAG tests:**
-```bash
-# Run all RAG tests
-go test -v -run TestRag
-
-# Run specific RAG test
-go test -v -run TestIngestAndQuery
-```
 
 ### Testing Knowledge Base
 
@@ -1023,7 +879,7 @@ Before submitting a PR with new tests:
 
 - [ARCHITECTURE.html](ARCHITECTURE.html) — Technical architecture and test coverage
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration for test environments
-- [rag_support_test.go](rag_support_test.go) — Example of comprehensive RAG tests
+- [ollama_chat_test.go](ollama_chat_test.go) — Example of testing against a fake server
 - [workspace_test.go](workspace_test.go) — Example of workspace tests
 
 ## See Also

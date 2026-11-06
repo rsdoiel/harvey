@@ -1,0 +1,58 @@
+Title: Harvey Session
+Credit: Recorded by Harvey
+Author: TESTER
+Date: <ts>
+Draft date: <date>
+Model: LLAMA3.2 (ollama)
+Backend: ollama
+
+
+FADE IN:
+
+
+INT. PIPELINE S1.MD STEP 1/2 <ts>
+
+TESTER executes /pipeline 70% s1.md s2.md.
+Model: ollama (llama3.2:3b). Workspace: <ws>.
+
+[[hidden confidence instruction appended]]
+
+TESTER
+First step: summarise the situation.
+
+HARVEY
+Step one answer.
+
+[[confidence: 0.90 — threshold met]]
+
+
+CUT TO:
+
+
+INT. PIPELINE S2.MD STEP 2/2 <ts>
+
+TESTER executes /pipeline 70% s1.md s2.md.
+Model: ollama (llama3.2:3b). Workspace: <ws>.
+
+[[hidden confidence instruction appended]]
+
+TESTER
+Second step: propose a fix.
+
+HARVEY
+Not so sure.
+
+[[confidence: 0.30 — threshold not met (0.70)]]
+
+
+CUT BACK TO:
+
+
+INT. HARVEY AND TESTER TALKING <ts>
+
+Harvey and TESTER are in chat mode. Model: ollama (llama3.2:3b). Workspace: <ws>.
+
+[[pipeline stopped at step 2/2: confidence 0.30 below threshold 0.70]]
+
+
+THE END.

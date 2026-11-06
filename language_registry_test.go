@@ -217,9 +217,6 @@ func TestGetLanguageInfo_known(t *testing.T) {
 	if info.Name != "Oberon" {
 		t.Errorf("info.Name = %q, want \"Oberon\"", info.Name)
 	}
-	if !info.HasChunking {
-		t.Error("info.HasChunking = false, want true")
-	}
 }
 
 func TestGetLanguageInfo_unknown(t *testing.T) {
@@ -267,12 +264,6 @@ func TestLanguageIDs_containsAll(t *testing.T) {
 func TestGetHandlers_phase2(t *testing.T) {
 	r := freshRegistry()
 	for _, id := range r.LanguageIDs() {
-		if r.GetChunker(id) != nil {
-			t.Errorf("GetChunker(%q) != nil (expected nil through Phase 2)", id)
-		}
-		if r.GetExtractor(id) != nil {
-			t.Errorf("GetExtractor(%q) != nil (expected nil through Phase 2)", id)
-		}
 		if r.GetFormatter(id) != nil {
 			t.Errorf("GetFormatter(%q) != nil (expected nil through Phase 2)", id)
 		}
@@ -291,9 +282,9 @@ func TestGetHandlers_phase2(t *testing.T) {
 func TestRegisterLanguage_overwrite(t *testing.T) {
 	r := NewLanguageRegistry()
 	r.RegisterLanguage(LanguageInfo{ID: "x", Name: "X", Extensions: []string{".x"}},
-		nil, nil, nil, nil, nil)
+		nil, nil, nil)
 	r.RegisterLanguage(LanguageInfo{ID: "x", Name: "Y", Extensions: []string{".x"}},
-		nil, nil, nil, nil, nil)
+		nil, nil, nil)
 
 	info, ok := r.GetLanguageInfo("x")
 	if !ok {

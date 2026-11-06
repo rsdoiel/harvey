@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -101,7 +102,7 @@ func (a *Agent) chatURL() string {
 func (a *Agent) listFamilyModels() []ModelSummary {
 	f := a.ollamaFamily()
 	var out []ModelSummary
-	add := func(url, engine string) {
+	add := func(url, service, engine string) {
 		if url == "" || !ProbeOllama(url) {
 			return
 		}
@@ -110,24 +111,45 @@ func (a *Agent) listFamilyModels() []ModelSummary {
 			return
 		}
 		for _, s := range summaries {
-			out = append(out, ModelSummary{Name: s.Name, Engine: engine, SizeBytes: s.SizeBytes})
+			out = append(out, ModelSummary{Name: s.Name, Service: service, Engine: engine, SizeBytes: s.SizeBytes})
 		}
 	}
-	add(f.OllamaURL, "ollama")
-	add(f.HailoURL, "hailo")
-	// The Hailo catalog: what the card can run but has not been pulled.
-	have := map[string]bool{}
-	for _, m := range out {
-		if m.Engine == "hailo" {
-			have[strings.ToLower(m.Name)] = true
+	// catalog adds what a Hailo service can run but has not pulled.
+	catalog := func(service string, names []string) {
+		have := map[string]bool{}
+		for _, m := range out {
+			if m.ServiceName() == service {
+				have[strings.ToLower(m.Name)] = true
+			}
+		}
+		for _, name := range names {
+			if !have[strings.ToLower(name)] {
+				out = append(out, ModelSummary{Name: name, Service: service, Engine: "hailo", NotPulled: true})
+			}
 		}
 	}
-	for _, name := range f.HailoCatalog {
-		if !have[strings.ToLower(name)] {
-			out = append(out, ModelSummary{Name: name, Engine: "hailo", NotPulled: true})
+	add(f.OllamaURL, "ollama", "ollama")
+	add(f.HailoURL, "hailo", "hailo")
+	catalog("hailo", f.HailoCatalog)
+	// Services from services: (DR-0049), in name order so listings are stable.
+	for _, name := range a.configuredServiceNames() {
+		svc := a.Config.Services[name]
+		add(svc.URL, name, svc.Engine)
+		if svc.Engine == "hailo" {
+			catalog(name, fetchHailoCatalog(svc.URL))
 		}
 	}
 	return out
+}
+
+// configuredServiceNames is the names in services:, sorted.
+func (a *Agent) configuredServiceNames() []string {
+	names := make([]string, 0, len(a.Config.Services))
+	for n := range a.Config.Services {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 /** setHailoModel makes model on the hailo-ollama server the active model:
@@ -292,92 +314,6 @@ func (a *Agent) pickFamilyModel(reader *bufio.Reader, out io.Writer, preferredMo
 	return use(models[idx-1], "")
 }
 
-// explainingEmbedder wraps an Ollama embedder so that a failure on a machine
-// where Hailo is in play says why: Hailo cannot embed, and Ollama is missing.
-type explainingEmbedder struct {
-	Embedder
-	a *Agent
-}
-
-// Embed embeds text with the wrapped embedder; a failure is explained by
-// explainEmbedError.
-func (e explainingEmbedder) Embed(text string) ([]float64, error) {
-	vec, err := e.Embedder.Embed(text)
-	if err != nil {
-		return nil, e.a.explainEmbedError(err)
-	}
-	return vec, nil
-}
-
-/** wrapEmbedder makes an Ollama embedder explain its failures when Hailo is in
- * play. Embeddings always use Ollama (hailo-ollama has no /api/embed), so a
- * failure on a Hailo machine usually means Ollama is not there.
- *
- * Parameters:
- *   e (Embedder) — the embedder to wrap.
- *
- * Returns:
- *   Embedder — e, with failures explained.
- *
- * Example:
- *   embedder := a.wrapEmbedder(NewOllamaEmbedder(a.Config.Ollama.URL, model))
- */
-func (a *Agent) wrapEmbedder(e Embedder) Embedder { return explainingEmbedder{e, a} }
-
-/** embedderFor is NewEmbedderForEntry for the agent: an Ollama-kind embedder
- * explains its failures when Hailo is in play (see wrapEmbedder); an
- * encoderfile embedder is returned as is.
- *
- * Parameters:
- *   entry (*RagStoreEntry) — store configuration entry.
- *
- * Returns:
- *   Embedder — the embedder for the entry.
- *
- * Example:
- *   embedder := a.embedderFor(a.Config.Memory.ActiveRagStore())
- */
-func (a *Agent) embedderFor(entry *RagStoreEntry) Embedder {
-	e := NewEmbedderForEntry(entry, a.Config.Ollama.URL)
-	if entry.EmbedderKind == "encoderfile" {
-		return e
-	}
-	return a.wrapEmbedder(e)
-}
-
-/** explainEmbedError turns an embedding failure into a plain message when the
- * cause is that Hailo is in use and Ollama is not there. It looks for Hailo
- * only now, after a failure, so an embedding that works costs nothing, and a
- * machine with no card and no hailo.url is never asked about Hailo. Any other
- * failure is returned unchanged.
- *
- * Parameters:
- *   cause (error) — the embedder's error.
- *
- * Returns:
- *   error — class unavailable when Hailo is in play and Ollama is missing (wrapping
- *           cause when Ollama is simply unreachable; the relabelled case drops the
- *           server's 404 body as noise); otherwise cause.
- *
- * Example:
- *   return nil, a.explainEmbedError(err)
- */
-func (a *Agent) explainEmbedError(cause error) error {
-	f := a.ollamaFamily()
-	if f.HailoURL == "" {
-		return cause
-	}
-	if f.Relabelled {
-		return Unavailablef("Hailo cannot embed; ollama.url (%s) is hailo-ollama, so there is no Ollama server. "+
-			"Run Ollama and set ollama.url to it (default http://localhost:11434), and set hailo.url to %s",
-			a.Config.Ollama.URL, f.HailoURL)
-	}
-	if !ProbeOllama(f.OllamaURL) {
-		return Unavailablef("Hailo cannot embed; no Ollama at %s: %w", f.OllamaURL, cause)
-	}
-	return cause
-}
-
 // hailoUnitDefault is where the user's systemd unit for hailo-ollama lives,
 // relative to the home directory.
 const hailoUnitDefault = ".config/systemd/user/hailo-ollama.service"
@@ -451,3 +387,16 @@ func (a *Agent) hailoHint(out io.Writer) {
 		fmt.Fprintln(out, dim("  "+line))
 	}
 }
+
+/** memoryEmbedder returns the embedder the memory system uses. It is nil: the
+ * embedder used to come from the active RAG store's configuration, and /rag was
+ * removed (workspace DR-0035), so memory recall is by keyword until the memory
+ * store itself is replaced (DR-0037).
+ *
+ * Returns:
+ *   Embedder — nil.
+ *
+ * Example:
+ *   embedder := a.memoryEmbedder() // nil
+ */
+func (a *Agent) memoryEmbedder() Embedder { return nil }

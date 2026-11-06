@@ -26,7 +26,7 @@ var (
 
 /** Drafter writes a summary for a prompt. It is the only thing about a model
  * that LearnSession knows, so the drafting logic is tested without one, and a
- * routed endpoint, a local llamafile and the active model are all the same
+ * routed endpoint, a local model and the active model are all the same
  * to it.
  *
  * Methods:

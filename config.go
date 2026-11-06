@@ -41,39 +41,13 @@ workspace. /git <subcommand> shows status/diff/log.
    writes it and confirms.
 `
 
-/** RagStoreEntry describes one named RAG knowledge store in the registry.
- *
- * Fields:
- *   Name           (string)            — short identifier used with /rag use and /rag new.
- *   DBPath         (string)            — path to the SQLite database, relative to workspace root.
- *   EmbeddingModel (string)            — embedding model name bound to this store.
- *   ModelMap       (map[string]string) — generation model → embedding model overrides.
- *   EmbedderKind   (string)            — "ollama" (default) or "encoderfile".
- *   EmbedderURL    (string)            — base URL for the embedder; used when EmbedderKind is "encoderfile".
- *   SkipPerPrompt  (bool)              — when true, ragAugment skips this store; the model uses
- *                                        retrieve_memory instead. Set via per_prompt: false in YAML.
- *
- * Example:
- *   e := RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"}
- *   e2 := RagStoreEntry{Name: "docs", DBPath: "agents/rag/docs.db", EmbeddingModel: "nomic-embed-text-v1_5",
- *                        EmbedderKind: "encoderfile", EmbedderURL: "http://localhost:8080"}
- */
-type RagStoreEntry struct {
-	Name           string
-	DBPath         string
-	EmbeddingModel string
-	ModelMap       map[string]string
-	EmbedderKind   string // "ollama" (default) or "encoderfile"
-	EmbedderURL    string // base URL for the embedder when EmbedderKind == "encoderfile"
-	SkipPerPrompt  bool   // when true, ragAugment skips this store (per_prompt: false in YAML)
-}
-
 /** OllamaConfig holds all Ollama-specific connection and model settings.
  *
  * Fields:
  *   URL           (string)        — Ollama base URL; default "http://localhost:11434".
  *   Model         (string)        — currently selected Ollama model.
- *   ContextLength (int)           — context window size in tokens; 0 = unknown.
+ *   ContextLength (int)           — context window size in tokens; 0 = derive it (the model's own, limited by memory).
+ *   MaxContext    (int)           — the most window harvey asks for by default, in tokens; 0 = 32768.
  *   Timeout       (time.Duration) — HTTP timeout for Ollama requests; 0 = no timeout.
  *
  * Example:
@@ -83,6 +57,7 @@ type OllamaConfig struct {
 	URL           string
 	Model         string
 	ContextLength int
+	MaxContext    int
 	Timeout       time.Duration
 	// URLExplicit and ModelExplicit are set when --ollama or -m/--model gave
 	// the value, so LoadHarveyYAML leaves it alone: the command line wins.
@@ -108,32 +83,32 @@ type HailoConfig struct {
 	URLSet bool
 }
 
-/** LlamafileConfig holds settings for the llamafile inference backend.
+/** ServiceConfig is one named model service beyond the two defaults (DR-0049
+ * item 1): where it is and what kind of server it is.
  *
  * Fields:
- *   URL            (string)           — API base URL; default "http://localhost:8080".
- *   ModelsDir      (string)           — discovery directory; default "$HOME/Models".
- *   StartupTimeout (time.Duration)    — how long to wait for server response; default 120s.
- *   GPULayers      (int)              — -ngl value; 0 = CPU-only (default; safe on every
- *                                        platform Harvey targets, including Raspberry Pi,
- *                                        which has no usable GPU-compute backend). Set to
- *                                        99 (maximise GPU) or a specific layer count in
- *                                        harvey.yaml on hardware with real GPU support.
- *   MaxTokens      (int)              — max tokens per completion; 0 = no limit.
- *   Models         ([]LlamafileEntry) — registered llamafile models.
- *   Active         (string)           — name of the active model; "" = none.
+ *   URL    (string) — base URL, "http://host:port".
+ *   Engine (string) — the kind, "ollama" or "hailo"; selects the capability table.
  *
  * Example:
- *   cfg.Llamafile = LlamafileConfig{URL: "http://localhost:8080", GPULayers: 0}
+ *   cfg.Services["hat2"] = ServiceConfig{URL: "http://pi2.lan:8000", Engine: "hailo"}
  */
-type LlamafileConfig struct {
-	URL            string
-	ModelsDir      string
-	StartupTimeout time.Duration
-	GPULayers      int
-	MaxTokens      int
-	Models         []LlamafileEntry
-	Active         string
+type ServiceConfig struct {
+	URL    string
+	Engine string
+}
+
+/** DraftConfig holds the drafting settings (DR-0030 item 8).
+ *
+ * Fields:
+ *   Model (string) — the model `/kb draft` drafts with, "service/model" or a
+ *                    bare name; "" means the session's own model.
+ *
+ * Example:
+ *   cfg.Draft.Model = "hailo/qwen2.5-coder:1.5b"
+ */
+type DraftConfig struct {
+	Model string
 }
 
 /** SecurityConfig holds safe-mode and command permission settings.
@@ -211,10 +186,9 @@ type SkillsConfig struct {
  *   AgentsDir    (string)         — base directory for the agents/skills tree; empty = agents/.
  *   SystemPrompt (string)         — contents of HARVEY.md, injected as the system prompt.
  *   Ollama       (OllamaConfig)   — Ollama connection and model settings.
- *   Llamafile    (LlamafileConfig) — llamafile backend settings.
  *   Security     (SecurityConfig) — safe-mode and permission settings.
  *   Session      (SessionConfig)  — recording and replay settings.
- *   Memory       (MemoryConfig)   — unified memory system settings, including RAG and knowledge base.
+ *   Memory       (MemoryConfig)   — unified memory system settings, including the knowledge base.
  *
  * Example:
  *   cfg := DefaultConfig()
@@ -226,6 +200,7 @@ type Config struct {
 	AgentsDir      string          // agents/skills tree root; empty = agents/
 	SystemPrompt   string          // contents of HARVEY.md, injected as the system prompt
 	Routes         []RouteEndpoint // registered remote endpoints; persisted across sessions
+	RemovedRoutes  []RouteEndpoint // endpoints in routes.json of a removed kind (DR-0033, DR-0042); skipped
 	RoutingEnabled bool            // when false, @mentions are rejected with a warning
 	ModelCacheDB   string          // path to model_cache.db; empty = harvey/model_cache.db
 	explicit       map[string]bool // settings the command line or environment gave; see MarkExplicit
@@ -233,11 +208,12 @@ type Config struct {
 	Skills    SkillsConfig
 	Ollama    OllamaConfig
 	Hailo     HailoConfig
-	Llamafile LlamafileConfig
+	Draft     DraftConfig
+	// Services names the model servers beyond the two defaults (ollama.url and
+	// hailo.url), keyed by service name (DR-0049). Read and checked; not yet used.
+	Services  map[string]ServiceConfig
 	Security  SecurityConfig
 	Session   SessionConfig
-	// LlamaCpp backend settings
-	LlamaCpp LlamaCppConfig
 	// Model aliases: short name → ModelAlias (model ID + optional purpose tags)
 	ModelAliases map[string]ModelAlias
 	// Tool settings
@@ -258,10 +234,12 @@ type Config struct {
 	// low-severity, so token cost isn't spent on them unless requested. See
 	// computational-sensors-design.md.
 	SensorInjectFormatFindings bool
-	// Memory system: RAG stores, knowledge base, and retrieval settings
+	// Memory system: knowledge base and retrieval settings
 	Memory MemoryConfig
 	// Chunking: context-overflow detection and chunked document analysis settings.
 	Chunking ChunkConfig
+	// KB holds settings about how harvey uses the installed kb (harvey.yaml kb:).
+	KB KBConfig
 	// LearnModel names the route or local model `/kb learn draft` uses to draft
 	// document summaries (knowledge-learning-mode-design.md decision 6). Empty
 	// means the active model. Kept distinct from any retrieval-time model: the
@@ -305,12 +283,6 @@ func DefaultConfig() *Config {
 		Hailo: HailoConfig{
 			URL: "http://localhost:8000",
 		},
-		Llamafile: LlamafileConfig{
-			URL:            "http://localhost:8080",
-			ModelsDir:      llamafileDefaultModelsDir(),
-			StartupTimeout: 120 * time.Second,
-			GPULayers:      0,
-		},
 		Security: SecurityConfig{
 			SafeMode:        true,
 			AllowedCommands: allowed,
@@ -319,10 +291,6 @@ func DefaultConfig() *Config {
 		},
 		Session: SessionConfig{
 			AutoRecord: true,
-		},
-		LlamaCpp: LlamaCppConfig{
-			URL:          "http://127.0.0.1:8081",
-			StartTimeout: 120 * time.Second,
 		},
 		SyntaxHighlight:      true,
 		AutoFormat:           true,
@@ -638,9 +606,7 @@ func (c *Config) PermissionString(prefix string) string {
  *                                             injection (default 0.25); falls back to 512 tokens when
  *                                             OllamaContextLength is unknown.
  *   RollingSummary    (RollingSummaryConfig) — working-memory compression settings.
- *   RagStores         ([]RagStoreEntry)      — all registered named RAG stores.
- *   RagActive         (string)              — name of the currently active RAG store; "" = none.
- *   RagEnabled        (bool)               — when true, inject top-K chunks before each Chat call.
+ *   RagRemoved        (bool)               — harvey.yaml still has a memory.rag section; /rag was removed (DR-0035).
  *   KnowledgeDB       (string)             — path to knowledge.db; empty = agents/knowledge.db.
  *   CurrentProjectID  (int64)              — in-session active knowledge-base project ID (0 = none).
  *
@@ -653,23 +619,38 @@ type MemoryConfig struct {
 	InjectOnStart    bool
 	BudgetPct        float64              // fraction of model context window for memory injection
 	RollingSummary   RollingSummaryConfig // working-memory compression settings
-	RagStores        []RagStoreEntry      // all registered named RAG stores
-	RagActive        string               // name of the currently active RAG store; "" = none
-	RagEnabled       bool                 // when true, inject top-K chunks before each Chat call
+	RagRemoved       bool                 // harvey.yaml still had a memory.rag section; /rag was removed (DR-0035)
 	KnowledgeDB      string               // path to knowledge.db; empty = agents/knowledge.db
 	CurrentProjectID int64                // in-session active knowledge-base project ID (0 = none)
 }
 
+/** KBConfig is the kb: section of harvey.yaml: how harvey uses the installed
+ * kb, apart from where its database is (memory.knowledge_base.path).
+ *
+ * Fields:
+ *   Project (string) — the kb project /kb draft attaches drafts to when
+ *                      --project is not given; empty = use the workspace
+ *                      directory's name if a kb project has it, else stop.
+ *
+ * Example:
+ *   cfg.KB.Project = "harvey" // harvey.yaml: kb: {project: harvey}
+ */
+type KBConfig struct {
+	Project string
+}
+
 /** RollingSummaryConfig controls automatic working-memory compression.
- * When history token count exceeds WarnAtPct of the model context window,
- * Harvey warns then compresses all but the last KeepTurns turns into a
- * short summary via a separate low-temperature LLM call.
+ * When the conversation reaches WarnAtPct of the prompt limit (the model's
+ * prompt limit, else 85% of its context window), Harvey summarises all but the
+ * last KeepTurns turns, with the active model, into one summary that the
+ * session log records together with the events it stands for.
  *
  * Fields:
  *   Enabled   (bool)    — when false compression never fires; default true.
- *   WarnAtPct (float64) — compress when history exceeds this fraction of the
- *                         model context window; default 0.80.
- *   KeepTurns (int)     — number of recent turns to keep verbatim; default 6.
+ *   WarnAtPct (float64) — summarise when the conversation exceeds this fraction
+ *                         of the prompt limit; default 0.80.
+ *   KeepTurns (int)     — number of recent turns (a typed line and its reply,
+ *                         with what was read into it) to keep verbatim; default 6.
  *
  * Example:
  *   cfg.Memory.RollingSummary = RollingSummaryConfig{Enabled: true, WarnAtPct: 0.80, KeepTurns: 6}
@@ -678,85 +659,6 @@ type RollingSummaryConfig struct {
 	Enabled   bool
 	WarnAtPct float64
 	KeepTurns int
-}
-
-/** ActiveRagStore returns a pointer to the active RagStoreEntry in the memory
- * config, or nil when no store is configured.
- *
- * Returns:
- *   *RagStoreEntry — the active entry, or nil.
- *
- * Example:
- *   if e := cfg.Memory.ActiveRagStore(); e != nil {
- *       fmt.Println(e.DBPath)
- *   }
- */
-func (m *MemoryConfig) ActiveRagStore() *RagStoreEntry {
-	if m.RagActive == "" {
-		return nil
-	}
-	return m.RagStoreByName(m.RagActive)
-}
-
-/** RagStoreByName returns a pointer to the named store entry in the memory
- * config, or nil when not found.
- *
- * Parameters:
- *   name (string) — store name to look up.
- *
- * Returns:
- *   *RagStoreEntry — matching entry, or nil.
- *
- * Example:
- *   if e := cfg.Memory.RagStoreByName("golang"); e != nil {
- *       fmt.Println(e.EmbeddingModel)
- *   }
- */
-func (m *MemoryConfig) RagStoreByName(name string) *RagStoreEntry {
-	for i := range m.RagStores {
-		if m.RagStores[i].Name == name {
-			return &m.RagStores[i]
-		}
-	}
-	return nil
-}
-
-/** AddOrUpdateRagStore inserts e into the memory config registry if its name
- * is new, or replaces the existing entry if one with the same name exists.
- *
- * Parameters:
- *   e (RagStoreEntry) — the entry to add or replace.
- *
- * Example:
- *   cfg.Memory.AddOrUpdateRagStore(RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db"})
- */
-func (m *MemoryConfig) AddOrUpdateRagStore(e RagStoreEntry) {
-	for i := range m.RagStores {
-		if m.RagStores[i].Name == e.Name {
-			m.RagStores[i] = e
-			return
-		}
-	}
-	m.RagStores = append(m.RagStores, e)
-}
-
-/** RemoveRagStore removes the store with the given name from the memory config
- * registry. It is a no-op when no store with that name exists.
- *
- * Parameters:
- *   name (string) — name of the store to remove.
- *
- * Example:
- *   cfg.Memory.RemoveRagStore("research-llm")
- */
-func (m *MemoryConfig) RemoveRagStore(name string) {
-	out := m.RagStores[:0]
-	for _, e := range m.RagStores {
-		if e.Name != name {
-			out = append(out, e)
-		}
-	}
-	m.RagStores = out
 }
 
 // parseDurationString parses a duration from a YAML string value. It accepts:
@@ -780,14 +682,14 @@ func parseDurationString(s string) (time.Duration, error) {
 /** MarkExplicit records that a setting was given on the command line or in
  * the environment, so LoadHarveyYAML leaves it as it is: the command line
  * beats harvey.yaml, and the environment beats it too. Keys are the setting's
- * harvey.yaml path, for example "llamafile.url" or "session.record_path".
+ * harvey.yaml path, for example "session.record_path".
  *
  * Parameters:
  *   keys (...string) — harvey.yaml paths of the settings now fixed.
  *
  * Example:
- *   cfg.Llamafile.URL = "http://localhost:9090"
- *   cfg.MarkExplicit("llamafile.url")
+ *   cfg.Session.RecordPath = "out.spmd"
+ *   cfg.MarkExplicit("session.record_path")
  */
 func (c *Config) MarkExplicit(keys ...string) {
 	if c.explicit == nil {
@@ -807,7 +709,7 @@ func (c *Config) MarkExplicit(keys ...string) {
  *   bool — true when the command line or environment gave it.
  *
  * Example:
- *   if !cfg.IsExplicit("llamafile.models_dir") { cfg.Llamafile.ModelsDir = dir }
+ *   if !cfg.IsExplicit("session.record_path") { cfg.Session.RecordPath = path }
  */
 func (c *Config) IsExplicit(key string) bool { return c.explicit[key] }
 
@@ -843,8 +745,14 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if err := yaml.Unmarshal(data, &y); err != nil {
 		return ClassedAs(ClassConfig, err)
 	}
+	if y.Llamafile != nil || y.LlamaCpp != nil {
+		return Configf("harvey.yaml: the llamafile: and llamacpp: sections are no longer supported; llama.cpp and llamafile were removed (workspace DR-0033). Delete the section and use Ollama or hailo-ollama")
+	}
 	if y.Memory.KnowledgeBase.Path != "" {
 		cfg.Memory.KnowledgeDB = y.Memory.KnowledgeBase.Path
+	}
+	if y.KB.Project != "" {
+		cfg.KB.Project = y.KB.Project
 	}
 	if y.SessionsDir != "" {
 		cfg.SessionsDir = y.SessionsDir
@@ -876,33 +784,14 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.ModelCacheDB != "" {
 		cfg.ModelCacheDB = y.ModelCacheDB
 	}
-	// memory.rag: is the canonical RAG configuration location.
-	if len(y.Memory.RAG.Stores) > 0 {
-		cfg.Memory.RagStores = make([]RagStoreEntry, len(y.Memory.RAG.Stores))
-		for i, s := range y.Memory.RAG.Stores {
-			// PerPrompt defaults to true (augment every prompt); false disables it.
-			skipPerPrompt := s.PerPrompt != nil && !*s.PerPrompt
-			cfg.Memory.RagStores[i] = RagStoreEntry{
-				Name:           s.Name,
-				DBPath:         s.DBPath,
-				EmbeddingModel: s.EmbeddingModel,
-				ModelMap:       s.ModelMap,
-				EmbedderKind:   s.EmbedderKind,
-				EmbedderURL:    s.EmbedderURL,
-				SkipPerPrompt:  skipPerPrompt,
-			}
-		}
-		cfg.Memory.RagActive = y.Memory.RAG.Active
-		cfg.Memory.RagEnabled = y.Memory.RAG.Enabled
-	} else if y.Memory.RAG.DBPath != "" {
-		cfg.Memory.RagStores = []RagStoreEntry{{
-			Name:           "default",
-			DBPath:         y.Memory.RAG.DBPath,
-			EmbeddingModel: y.Memory.RAG.EmbeddingModel,
-			ModelMap:       y.Memory.RAG.ModelMap,
-		}}
-		cfg.Memory.RagActive = "default"
-		cfg.Memory.RagEnabled = y.Memory.RAG.Enabled
+	// memory.rag: was the RAG configuration. /rag was removed (workspace
+	// DR-0035): naming an active store or turning RAG on is an error, since
+	// the author would expect per-prompt retrieval that no longer happens; a
+	// section that only lists stores is noted once at startup.
+	if r := y.Memory.RAG; r.Active != "" || r.Enabled {
+		return Configf("harvey.yaml: memory.rag: names an active store or turns RAG on, but /rag was removed (workspace DR-0035). Delete the section (the store files stay on disk) and ingest documents with kb document ingest")
+	} else if len(r.Stores) > 0 || r.DBPath != "" {
+		cfg.Memory.RagRemoved = true
 	}
 	// Load security settings — only override defaults when explicitly set in YAML.
 	if y.Security.Permissions != nil {
@@ -946,6 +835,14 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 		cfg.Hailo.URL = y.Hailo.URL
 		cfg.Hailo.URLSet = true
 	}
+	if y.Draft.Model != "" {
+		cfg.Draft.Model = strings.TrimSpace(y.Draft.Model)
+	}
+	services, err := parseServices(y.Services)
+	if err != nil {
+		return err
+	}
+	cfg.Services = services
 	if y.Ollama.URL != "" && !cfg.Ollama.URLExplicit {
 		cfg.Ollama.URL = y.Ollama.URL
 	}
@@ -954,6 +851,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	if y.Ollama.ContextLength > 0 {
 		cfg.Ollama.ContextLength = y.Ollama.ContextLength
+	}
+	if y.Ollama.MaxContext > 0 {
+		cfg.Ollama.MaxContext = y.Ollama.MaxContext
 	}
 	if y.Ollama.Timeout != "" {
 		if d, err := parseDurationString(y.Ollama.Timeout); err == nil {
@@ -967,59 +867,6 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 		}
 		for k, v := range y.ModelAliases {
 			cfg.ModelAliases[strings.ToLower(k)] = ModelAlias{Model: v.Model, Engine: v.Engine, Tags: v.Tags}
-		}
-	}
-	// Load llamafile settings
-	if y.Llamafile.ModelsDir != "" && !cfg.IsExplicit("llamafile.models_dir") {
-		cfg.Llamafile.ModelsDir = expandTilde(y.Llamafile.ModelsDir)
-	}
-	// Blank slate: a persisted llamafile.active (legacy leftover or hand edit)
-	// must never auto-select a model at startup. Only an explicit --llamafile
-	// CLI flag (cmd/harvey/main.go) or a --continue/--resume session hint may.
-	if y.Llamafile.URL != "" && !cfg.IsExplicit("llamafile.url") {
-		cfg.Llamafile.URL = y.Llamafile.URL
-	}
-	if y.Llamafile.StartupTimeout != "" {
-		if d, err := parseDurationString(y.Llamafile.StartupTimeout); err == nil {
-			cfg.Llamafile.StartupTimeout = d
-		}
-	}
-	if y.Llamafile.GPULayers != nil {
-		cfg.Llamafile.GPULayers = *y.Llamafile.GPULayers
-	}
-	if y.Llamafile.MaxTokens > 0 {
-		cfg.Llamafile.MaxTokens = y.Llamafile.MaxTokens
-	}
-	for _, m := range y.Llamafile.Models {
-		cfg.Llamafile.Models = append(cfg.Llamafile.Models, LlamafileEntry{
-			Name: m.Name, Path: m.Path, ContextLength: m.ContextLength,
-		})
-	}
-	// Load llama.cpp settings
-	if y.LlamaCpp.ServerBin != "" {
-		cfg.LlamaCpp.ServerBin = y.LlamaCpp.ServerBin
-	}
-	if y.LlamaCpp.ModelsDir != "" {
-		cfg.LlamaCpp.ModelsDir = expandTilde(y.LlamaCpp.ModelsDir)
-	}
-	if y.LlamaCpp.URL != "" {
-		cfg.LlamaCpp.URL = y.LlamaCpp.URL
-	}
-	if y.LlamaCpp.CtxSize > 0 {
-		cfg.LlamaCpp.CtxSize = y.LlamaCpp.CtxSize
-	}
-	if y.LlamaCpp.Threads > 0 {
-		cfg.LlamaCpp.Threads = y.LlamaCpp.Threads
-	}
-	if y.LlamaCpp.GPULayers != nil {
-		cfg.LlamaCpp.GPULayers = *y.LlamaCpp.GPULayers
-	}
-	if y.LlamaCpp.PinCPU {
-		cfg.LlamaCpp.PinCPU = true
-	}
-	if y.LlamaCpp.StartTimeout != "" {
-		if d, err := parseDurationString(y.LlamaCpp.StartTimeout); err == nil {
-			cfg.LlamaCpp.StartTimeout = d
 		}
 	}
 	// Load tool settings
@@ -1110,25 +957,7 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	if data, err := os.ReadFile(yamlPath); err == nil {
 		_ = yaml.Unmarshal(data, &y)
 	}
-	var stores []ragStoreYAML
-	if len(cfg.Memory.RagStores) > 0 {
-		stores = make([]ragStoreYAML, len(cfg.Memory.RagStores))
-		for i, e := range cfg.Memory.RagStores {
-			stores[i] = ragStoreYAML{
-				Name:           e.Name,
-				DBPath:         e.DBPath,
-				EmbeddingModel: e.EmbeddingModel,
-				ModelMap:       e.ModelMap,
-				EmbedderKind:   e.EmbedderKind,
-				EmbedderURL:    e.EmbedderURL,
-			}
-		}
-	}
-	y.Memory.RAG = ragYAML{
-		Active:  cfg.Memory.RagActive,
-		Stores:  stores,
-		Enabled: cfg.Memory.RagEnabled,
-	}
+	y.Memory.RAG = ragYAML{} // /rag was removed (DR-0035); the section is dropped on save
 	if cfg.Memory.KnowledgeDB != "" {
 		y.Memory.KnowledgeBase.Path = cfg.Memory.KnowledgeDB
 	}
@@ -1141,6 +970,9 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	y.SensorInjectFormatFindings = &cfg.SensorInjectFormatFindings
 	if cfg.LearnModel != "" {
 		y.LearnModel = cfg.LearnModel
+	}
+	if cfg.Draft.Model != "" {
+		y.Draft.Model = cfg.Draft.Model
 	}
 	if !cfg.ToolResultCompaction {
 		f := false
@@ -1161,25 +993,6 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 		return err
 	}
 	return os.WriteFile(yamlPath, out, 0644)
-}
-
-/** SaveRAGConfig is an alias for SaveMemoryConfig, retained for call-site
- * compatibility. All RAG state now lives in cfg.Memory.
- *
- * Parameters:
- *   ws  (*Workspace) — workspace whose agents/ directory is written.
- *   cfg (*Config)    — source of Memory fields to persist.
- *
- * Returns:
- *   error — on path resolution, YAML parse, or file write failure.
- *
- * Example:
- *   if err := SaveRAGConfig(ws, cfg); err != nil {
- *       fmt.Println("could not save RAG config:", err)
- *   }
- */
-func SaveRAGConfig(ws *Workspace, cfg *Config) error {
-	return SaveMemoryConfig(ws, cfg)
 }
 
 /** SaveModelAliases writes the model_aliases map back to harvey.yaml,
@@ -1239,110 +1052,8 @@ func SaveModelAliases(ws *Workspace, cfg *Config) error {
  */
 type ModelAlias struct {
 	Model  string   // full model name / path passed to the backend
-	Engine string   // "ollama", "llamafile", or "llamacpp"; "" means any (legacy aliases)
+	Engine string   // "ollama" or "hailo"; "" means any (legacy aliases)
 	Tags   []string // purpose labels, e.g. ["code", "instruct"]
-}
-
-// ─── LlamaCppConfig ───────────────────────────────────────────────────────────
-
-/** LlamaCppConfig holds workspace-level llama.cpp (llama-server) settings.
- *
- * Fields:
- *   ServerBin    (string)        — path to the llama-server binary; defaults to "llama-server" (PATH lookup).
- *   ModelsDir    (string)        — directory scanned for *.gguf model files; defaults to llama.cpp's cache ($LLAMA_CACHE, else ~/.cache/llama.cpp).
- *   URL          (string)        — API base URL; defaults to http://127.0.0.1:8081.
- *   CtxSize      (int)           — --ctx-size passed to llama-server; 0 = server default.
- *   Threads      (int)           — --threads; 0 = server default.
- *   GPULayers    (int)           — --n-gpu-layers; 0 = CPU-only.
- *   PinCPU       (bool)          — wrap the launch with `taskset -c 0-(Threads-1)`; no-op if Threads is 0 or taskset is unavailable.
- *   StartTimeout (time.Duration) — how long to wait for the server to respond on startup; default 120s.
- *
- * Example:
- *   cfg.LlamaCpp = LlamaCppConfig{URL: "http://127.0.0.1:8081", GPULayers: 35}
- */
-type LlamaCppConfig struct {
-	ServerBin    string        // path to llama-server binary; "" = "llama-server" (PATH lookup)
-	ModelsDir    string        // directory for *.gguf files; "" = llama.cpp's cache (llamaCppDefaultModelsDir)
-	URL          string        // API base URL; default http://127.0.0.1:8081
-	CtxSize      int           // --ctx-size; 0 = server default
-	Threads      int           // --threads; 0 = server default
-	GPULayers    int           // --n-gpu-layers; 0 = CPU-only
-	PinCPU       bool          // wrap launch with `taskset -c 0-(Threads-1)`; requires Threads > 0
-	StartTimeout time.Duration // startup probe timeout; default 120s
-}
-
-// ─── LlamafileEntry and registry helpers ─────────────────────────────────────
-
-/** LlamafileEntry describes a registered llamafile model.
- *
- * Fields:
- *   Name          (string) — short identifier used with /model use and /model alias add.
- *   Path          (string) — path to the llamafile binary, relative to workspace root or absolute.
- *   ContextLength (int)    — context window size in tokens; 0 means unknown (probed at startup).
- *
- * Example:
- *   e := LlamafileEntry{Name: "qwen-coding", Path: "~/Models/Qwen2.5-Coder-7B.llamafile", ContextLength: 8192}
- */
-type LlamafileEntry struct {
-	Name          string `yaml:"name"`
-	Path          string `yaml:"path"`
-	ContextLength int    `yaml:"context_length,omitempty"`
-}
-
-// llamafileDefaultModelsDir returns the default discovery directory ($HOME/Models).
-// Falls back to "." when the home directory cannot be determined.
-func llamafileDefaultModelsDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "."
-	}
-	return filepath.Join(home, "Models")
-}
-
-/** llamaCppDefaultModelsDir returns the directory llama.cpp keeps the models it
- * downloads (llama-server -hf), which is where Harvey looks for .gguf files
- * unless llamacpp.models_dir is set. Order: $LLAMA_CACHE, then
- * $XDG_CACHE_HOME/llama.cpp, then ~/.cache/llama.cpp.
- *
- * Returns:
- *   string — the cache directory; it need not exist. "." when no home
- *            directory can be determined and no variable is set.
- *
- * Example:
- *   dir := llamaCppDefaultModelsDir() // "/home/me/.cache/llama.cpp"
- */
-func llamaCppDefaultModelsDir() string {
-	if d := os.Getenv("LLAMA_CACHE"); d != "" {
-		return d
-	}
-	if d := os.Getenv("XDG_CACHE_HOME"); d != "" {
-		return filepath.Join(d, "llama.cpp")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "."
-	}
-	return filepath.Join(home, ".cache", "llama.cpp")
-}
-
-/** llamaCppModelsDir resolves the directory scanned for llama.cpp .gguf files:
- * llamacpp.models_dir when set, otherwise llama.cpp's own cache. ~/Models is
- * not consulted; that is the llamafile convention.
- *
- * Parameters:
- *   cfg (*Config) — the loaded configuration.
- *
- * Returns:
- *   string — the directory to scan.
- *
- * Example:
- *   dir := llamaCppModelsDir(a.Config)
- */
-func llamaCppModelsDir(cfg *Config) string {
-	if cfg.LlamaCpp.ModelsDir != "" {
-		return cfg.LlamaCpp.ModelsDir
-	}
-	return llamaCppDefaultModelsDir()
 }
 
 // expandTilde replaces a leading "~/" or bare "~" with the user's home directory.
@@ -1359,185 +1070,6 @@ func expandTilde(s string) string {
 		return home
 	}
 	return filepath.Join(home, s[2:])
-}
-
-/** ActiveLlamafileEntry returns a pointer to the active LlamafileEntry in the
- * config, or nil when no active model is set or the name is not found.
- *
- * Returns:
- *   *LlamafileEntry — the active entry, or nil.
- *
- * Example:
- *   if e := cfg.ActiveLlamafileEntry(); e != nil {
- *       fmt.Println(e.Path)
- *   }
- */
-func (c *Config) ActiveLlamafileEntry() *LlamafileEntry {
-	return c.LlamafileEntryByName(c.Llamafile.Active)
-}
-
-/** ActiveLlamafileContextLength returns the configured context window size for
- * the active llamafile model, or 0 when unknown (server default applies).
- *
- * Returns:
- *   int — context window in tokens, or 0.
- *
- * Example:
- *   ctxSize := cfg.ActiveLlamafileContextLength()
- *   // ctxSize == 49152 when set in harvey.yaml; 0 means use the model default
- */
-func (c *Config) ActiveLlamafileContextLength() int {
-	if e := c.ActiveLlamafileEntry(); e != nil {
-		return e.ContextLength
-	}
-	return 0
-}
-
-/** LlamafileEntryByName returns a pointer to the named LlamafileEntry, or nil
- * when not found.
- *
- * Parameters:
- *   name (string) — registry name to look up.
- *
- * Returns:
- *   *LlamafileEntry — matching entry, or nil.
- *
- * Example:
- *   if e := cfg.LlamafileEntryByName("qwen"); e != nil {
- *       fmt.Println(e.Path)
- *   }
- */
-func (c *Config) LlamafileEntryByName(name string) *LlamafileEntry {
-	if name == "" {
-		return nil
-	}
-	for i := range c.Llamafile.Models {
-		if c.Llamafile.Models[i].Name == name {
-			return &c.Llamafile.Models[i]
-		}
-	}
-	return nil
-}
-
-/** AddOrUpdateLlamafileEntry inserts e into the registry if its name is new,
- * or replaces the existing entry if one with the same name exists.
- *
- * Parameters:
- *   e (LlamafileEntry) — the entry to add or replace.
- *
- * Example:
- *   cfg.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: "qwen", Path: "/home/user/Models/qwen.llamafile"})
- */
-func (c *Config) AddOrUpdateLlamafileEntry(e LlamafileEntry) {
-	for i := range c.Llamafile.Models {
-		if c.Llamafile.Models[i].Name == e.Name {
-			c.Llamafile.Models[i] = e
-			return
-		}
-	}
-	c.Llamafile.Models = append(c.Llamafile.Models, e)
-}
-
-/** SaveLlamafileConfig writes the llamafile registry back to agents/harvey.yaml,
- * merging with existing content so that unrelated keys are preserved. Only the
- * llamafile: section is updated.
- *
- * Parameters:
- *   ws  (*Workspace) — workspace whose agents/ directory is written.
- *   cfg (*Config)    — source of llamafile fields to persist.
- *
- * Returns:
- *   error — on path resolution, YAML parse, or file write failure.
- *
- * Example:
- *   if err := SaveLlamafileConfig(ws, cfg); err != nil {
- *       fmt.Println("could not save llamafile config:", err)
- *   }
- */
-func SaveLlamafileConfig(ws *Workspace, cfg *Config) error {
-	yamlPath, err := ws.AbsPath(filepath.Join(harveySubdir, "harvey.yaml"))
-	if err != nil {
-		return err
-	}
-	var y harveyYAML
-	if data, err := os.ReadFile(yamlPath); err == nil {
-		_ = yaml.Unmarshal(data, &y)
-	}
-	entries := make([]llamafileEntryYAML, len(cfg.Llamafile.Models))
-	for i, e := range cfg.Llamafile.Models {
-		entries[i] = llamafileEntryYAML{Name: e.Name, Path: e.Path, ContextLength: e.ContextLength}
-	}
-	startupTO := ""
-	if cfg.Llamafile.StartupTimeout > 0 && cfg.Llamafile.StartupTimeout != 120*time.Second {
-		startupTO = cfg.Llamafile.StartupTimeout.String()
-	}
-	var gpuLayers *int
-	if cfg.Llamafile.GPULayers != 0 { // only persist when overriding the default
-		gpuLayers = &cfg.Llamafile.GPULayers
-	}
-	y.Llamafile = llamafileYAML{
-		ModelsDir:      cfg.Llamafile.ModelsDir,
-		Active:         "", // blank-slate: never persist the last-used model
-		URL:            cfg.Llamafile.URL,
-		StartupTimeout: startupTO,
-		GPULayers:      gpuLayers,
-		MaxTokens:      cfg.Llamafile.MaxTokens,
-		Models:         entries,
-	}
-	out, err := yaml.Marshal(&y)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(yamlPath, out, 0644)
-}
-
-/** SaveLlamaCppConfig writes the llama.cpp settings back to agents/harvey.yaml.
- * Only the llamacpp: section is updated; all other sections are preserved.
- *
- * Parameters:
- *   ws  (*Workspace) — workspace whose harvey.yaml is updated.
- *   cfg (*Config)    — source of llama.cpp fields to persist.
- *
- * Returns:
- *   error — on I/O or marshal failure.
- *
- * Example:
- *   if err := SaveLlamaCppConfig(ws, cfg); err != nil {
- *       fmt.Println("could not save llamacpp config:", err)
- *   }
- */
-func SaveLlamaCppConfig(ws *Workspace, cfg *Config) error {
-	yamlPath, err := ws.AbsPath(filepath.Join(harveySubdir, "harvey.yaml"))
-	if err != nil {
-		return err
-	}
-	var y harveyYAML
-	if data, err := os.ReadFile(yamlPath); err == nil {
-		_ = yaml.Unmarshal(data, &y)
-	}
-	startTO := ""
-	if cfg.LlamaCpp.StartTimeout > 0 && cfg.LlamaCpp.StartTimeout != 120*time.Second {
-		startTO = cfg.LlamaCpp.StartTimeout.String()
-	}
-	var gpuLayers *int
-	if cfg.LlamaCpp.GPULayers != 0 {
-		gpuLayers = &cfg.LlamaCpp.GPULayers
-	}
-	y.LlamaCpp = llamacppYAML{
-		ServerBin:    cfg.LlamaCpp.ServerBin,
-		ModelsDir:    cfg.LlamaCpp.ModelsDir,
-		URL:          cfg.LlamaCpp.URL,
-		CtxSize:      cfg.LlamaCpp.CtxSize,
-		Threads:      cfg.LlamaCpp.Threads,
-		PinCPU:       cfg.LlamaCpp.PinCPU,
-		GPULayers:    gpuLayers,
-		StartTimeout: startTO,
-	}
-	out, err := yaml.Marshal(&y)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(yamlPath, out, 0644)
 }
 
 // LoadHarveyMD moved to workspace.go as a Workspace method — HARVEY.md must

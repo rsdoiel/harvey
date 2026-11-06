@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -43,29 +42,29 @@ for chat)</h3>
 <col style="width: 35%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Model</th>
 <th scope="col">Size</th>
 <th scope="col">Notes</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>nomic-embed-text:latest</code></td>
 <td>137 MB</td>
 <td>Harvey default for RAG; 2K context</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>mxbai-embed-large</code></td>
 <td>334 MB</td>
 <td>Strong English-only embedding</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>bge-m3:latest</code></td>
 <td>567 MB</td>
 <td>Best installed embed; 8K context, multilingual</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>locusai/all-minilm-l6-v2:latest</code></td>
 <td>—</td>
 <td>Lightweight sentence embedder</td>
@@ -81,7 +80,7 @@ capability tier</h3>
 params)</h4>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Model</th>
 <th scope="col">Params</th>
 <th scope="col">Context</th>
@@ -90,21 +89,21 @@ params)</h4>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>smollm:360m</code></td>
 <td>362 M</td>
 <td>2K</td>
 <td>—</td>
 <td>-1</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>sailor2:1b</code></td>
 <td>988 M</td>
 <td>32K</td>
 <td>—</td>
 <td>-1</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>smollm:1.7b</code></td>
 <td>1.7 B</td>
 <td>2K</td>
@@ -126,7 +125,7 @@ that need a slightly longer window.</p>
 <h4 id="tier-2-small-24-b-params">Tier 2 — Small (2–4 B params)</h4>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Model</th>
 <th scope="col">Params</th>
 <th scope="col">Context</th>
@@ -135,35 +134,35 @@ that need a slightly longer window.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>granite3-moe:3b</code></td>
 <td>3.4 B</td>
 <td><strong>4K</strong></td>
 <td>✓</td>
 <td>✓</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>smallthinker:latest</code></td>
 <td>3.4 B</td>
 <td>32K</td>
 <td>—</td>
 <td>-1</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>stable-code:3b</code></td>
 <td>3 B</td>
 <td>16K</td>
 <td>—</td>
 <td>-1</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>cogito:3b</code></td>
 <td>3.6 B</td>
 <td>131K</td>
 <td>✓</td>
 <td>-1</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>phi4-mini:latest</code></td>
 <td>3.8 B</td>
 <td>131K</td>
@@ -191,7 +190,7 @@ support needed: <strong><code>stable-code:3b</code></strong></p>
 <h4 id="tier-3-medium-79-b-params">Tier 3 — Medium (7–9 B params)</h4>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Model</th>
 <th scope="col">Params</th>
 <th scope="col">Context</th>
@@ -200,35 +199,35 @@ support needed: <strong><code>stable-code:3b</code></strong></p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>apertus-tools:8b</code></td>
 <td>8.1 B</td>
 <td>65K</td>
 <td>✓</td>
 <td>✓</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>gemma2:latest</code></td>
 <td>9.2 B</td>
 <td>8K</td>
 <td>—</td>
 <td>-1</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>gemma4:latest</code></td>
 <td>8 B</td>
 <td>131K</td>
 <td>✓</td>
 <td>—</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>llama3.1:latest</code></td>
 <td>8 B</td>
 <td>131K</td>
 <td>✓</td>
 <td>-1</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>ministral-3:latest</code></td>
 <td>8.9 B</td>
 <td>262K</td>
@@ -256,7 +255,7 @@ reliably.</p>
 <h4 id="tier-4-large-2324-b-params">Tier 4 — Large (23–24 B params)</h4>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Model</th>
 <th scope="col">Params</th>
 <th scope="col">Context</th>
@@ -265,21 +264,21 @@ reliably.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>mistral-small:latest</code></td>
 <td>23.6 B</td>
 <td>32K</td>
 <td>✓</td>
 <td>-1</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>mistral-small3.2</code></td>
 <td>24 B</td>
 <td>131K</td>
 <td>✓</td>
 <td>-1</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>devstral-small-2:24b</code></td>
 <td>24 B</td>
 <td><strong>393K</strong></td>
@@ -311,19 +310,19 @@ Raspberry Pi 500+.</p>
 <col style="width: 18%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Machine</th>
 <th scope="col">Max practical model</th>
 <th scope="col">Notes</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>M1 Mac</td>
 <td><code>devstral-small-2:24b</code> (15 GB)</td>
 <td>All models available</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Raspberry Pi 500+</td>
 <td><code>ministral-3:latest</code> (8.9B) or smaller</td>
 <td>24B models will not run</td>
@@ -343,7 +342,7 @@ model.</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Task</th>
 <th scope="col">Min tier</th>
 <th scope="col">Recommended (Mac)</th>
@@ -351,97 +350,97 @@ model.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>Add a docstring</td>
 <td>2</td>
 <td><code>phi4-mini</code></td>
 <td><code>phi4-mini</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td>Quick Q&amp;A on a <code>/read</code> file</td>
 <td>2</td>
 <td><code>cogito:3b</code></td>
 <td><code>cogito:3b</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Write a unit test (known signature)</td>
 <td>2–3</td>
 <td><code>apertus-tools:8b</code></td>
 <td><code>apertus-tools:8b</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td>Fix a bug with error + context</td>
 <td>2–3</td>
 <td><code>apertus-tools:8b</code></td>
 <td><code>apertus-tools:8b</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Write a new function</td>
 <td>3</td>
 <td><code>apertus-tools:8b</code></td>
 <td><code>apertus-tools:8b</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td>Write a complete new file</td>
 <td>3</td>
 <td><code>apertus-tools:8b</code></td>
 <td><code>llama3.1</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Debug across multiple files</td>
 <td>3–4</td>
 <td><code>ministral-3</code></td>
 <td><code>ministral-3</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td>Multi-file feature (new code)</td>
 <td>4</td>
 <td><code>devstral-small-2:24b</code></td>
 <td><code>ministral-3</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Architectural review</td>
 <td>4</td>
 <td><code>devstral-small-2:24b</code></td>
 <td><code>mistral-small3.2</code>*</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Write documentation</td>
 <td>3–4</td>
 <td><code>ministral-3</code></td>
 <td><code>ministral-3</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Security review</td>
 <td>4</td>
 <td><code>devstral-small-2:24b</code></td>
 <td><code>ministral-3</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td>Reasoning / multi-step planning</td>
 <td>2–4</td>
 <td><code>smallthinker</code> or <code>mistral-small3.2</code></td>
 <td><code>smallthinker</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Agent loop (tool-calling + file writes)</td>
 <td>2–3</td>
 <td><code>apertus-tools:8b</code></td>
 <td><code>apertus-tools:8b</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td>Session handoff (Fountain writing)</td>
 <td>3</td>
 <td><code>ministral-3</code></td>
 <td><code>ministral-3</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td>RAG-augmented Q&amp;A</td>
 <td>1–2</td>
 <td><code>cogito:3b</code></td>
 <td><code>cogito:3b</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td>Embedding for RAG</td>
 <td>—</td>
 <td><code>bge-m3:latest</code></td>
@@ -478,7 +477,7 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="
 <span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="co">  # Code only (no tools needed)</span></span>
 <span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">code-light</span><span class="kw">:</span><span class="at"> stable-code:3b</span></span>
 <span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="co">  # Embedding (for /rag setup)</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="co">  # Embedding</span></span>
 <span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">embed</span><span class="kw">:</span><span class="at">      bge-m3:latest</span></span>
 <span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">embed-fast</span><span class="kw">:</span><span class="at"> nomic-embed-text:latest</span></span></code></pre></div>
 <hr />
@@ -497,8 +496,9 @@ dispatch.</li>
 <li><strong>How much context?</strong> If <code>/read-dir</code> loads a
 full package, pick a 131K+ model. Tier 2 models below 32K will truncate
 silently.</li>
-<li><strong>Is RAG useful?</strong> If the task involves an API the
-model doesn’t know well, run <code>/rag on</code> before asking.</li>
+<li><strong>Does it need documents?</strong> If the task involves an API
+the model doesn’t know well, ingest the docs with
+<code>kb document ingest</code> and use <code>/kb search</code>.</li>
 </ol>
 <h3 id="typical-session-setup">Typical session setup</h3>
 <pre><code># 1. Start Harvey
@@ -510,10 +510,7 @@ harvey
 /model use docs               # → ministral-3:latest (long documents)
 /model use fast               # → cogito:3b (quick Q&amp;A)
 
-# 3. Enable RAG if needed
-/rag on
-
-# 4. Load context
+# 3. Load context
 /read harvey/commands.go
 /read-dir harvey/ --depth 1
 

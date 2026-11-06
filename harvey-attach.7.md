@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -32,8 +32,8 @@ route can accept:
 
   Text and source-code files (≤ 256 KB)
     The file content is injected as plain text, identical to /read.
-    Files larger than 256 KB are rejected; use /rag ingest for large
-    text corpora.
+    Files larger than 256 KB are rejected; ingest large text with
+    kb document ingest.
 
   Binary files
     Rejected with a clear error. Use an appropriate converter first.
@@ -47,9 +47,9 @@ restricted to the workspace.
 Attach an image to the next turn on a vision-capable route:
 
 ~~~
-  harvey > /route add claude https://api.anthropic.com claude-opus-4-7
+  harvey > /route add pi2 ollama://192.168.1.12:11434 llama3.2-vision
   harvey > /attach ~/screenshots/error.png
-  harvey > @claude What does this error message say?
+  harvey > @pi2 What does this error message say?
 ~~~
 
 Attach a PDF for the model to reason about:
@@ -70,8 +70,7 @@ Attach a local source file:
 
   /read FILE...       — inject workspace text files (workspace-scoped)
   /read-pdf FILE PAGES — inject a specific page range from a PDF
-  /rag ingest PATH    — index a file into the RAG store for retrieval
+  /kb document ingest — make a document searchable (the installed kb)
   /route              — manage named remote endpoints
   /help read-pdf
-  /help rag
 

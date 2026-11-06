@@ -3,8 +3,6 @@ package harvey
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -60,44 +58,6 @@ func TestModelSystemAvailable_Hailo(t *testing.T) {
 		if !strings.Contains(why, want) {
 			t.Errorf("reason %q should mention %q", why, want)
 		}
-	}
-}
-
-func TestModelSystemAvailable_LlamaCpp(t *testing.T) {
-	bin := t.TempDir()
-	t.Setenv("PATH", bin)
-	cfg := DefaultConfig()
-	ok, why := modelSystemAvailable("llamacpp", cfg)
-	if ok {
-		t.Fatal("llama-server absent from PATH reported available")
-	}
-	if !strings.Contains(why, "llama-server") || !strings.Contains(why, "PATH") {
-		t.Errorf("reason %q should name llama-server and PATH", why)
-	}
-	if err := os.WriteFile(filepath.Join(bin, "llama-server"), []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if ok, why := modelSystemAvailable("llamacpp", cfg); !ok {
-		t.Errorf("llama-server on PATH reported unavailable: %s", why)
-	}
-}
-
-func TestModelSystemAvailable_LlamafileNeedsAFileInModelsDir(t *testing.T) {
-	dir := t.TempDir()
-	cfg := DefaultConfig()
-	cfg.Llamafile.ModelsDir = dir
-	ok, why := modelSystemAvailable("llamafile", cfg)
-	if ok {
-		t.Fatal("empty models dir reported available")
-	}
-	if !strings.Contains(why, dir) || !strings.Contains(why, ".llamafile") {
-		t.Errorf("reason %q should name %s and .llamafile", why, dir)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "m.llamafile"), []byte("x"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if ok, why := modelSystemAvailable("llamafile", cfg); !ok {
-		t.Errorf("models dir with a llamafile reported unavailable: %s", why)
 	}
 }
 

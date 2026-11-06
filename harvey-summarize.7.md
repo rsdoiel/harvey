@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -17,7 +17,7 @@ SUMMARIZE — condense conversation history to free context window space
 summary of the current conversation, then replaces the entire history with:
 
   1. The system prompt (re-injected automatically).
-  2. Any pinned context set with /context add.
+  2. Any pins (see /pin).
   3. A single user message containing the summary.
 
 This frees up the context window so you can continue a long session without
@@ -49,14 +49,13 @@ command does nothing.
 # WHAT SURVIVES SUMMARIZE
 
   System prompt    — re-injected automatically.
-  Pinned context   — re-injected as the first user message.
-  RAG state        — unaffected.
+  Pins             — re-injected as the first user messages.
   Recording        — the running session continues; summary is not
                      written back to the Fountain file.
 
 # SEE ALSO
 
-  /context add TEXT   — pin a summary you compose manually
+  /pin --text TEXT    — pin a summary you compose manually
   /clear              — discard history entirely (no summary generated)
   /status             — check context window usage before and after
   /help context

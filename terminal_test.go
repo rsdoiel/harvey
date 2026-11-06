@@ -2,9 +2,7 @@ package harvey
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,8 +10,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // makeTestTree creates a temporary directory tree for completion tests:
@@ -165,28 +161,14 @@ func TestActiveModelLabel_noBackend(t *testing.T) {
 	}
 }
 
-func TestActiveModelLabel_llamafile(t *testing.T) {
-	a := &Agent{Config: DefaultConfig()}
-	a.Config.Llamafile.Active = "qwen-coding"
-	if got := activeModelLabel(a); got != "qwen-coding (llamafile)" {
-		t.Errorf("got %q want %q", got, "qwen-coding (llamafile)")
-	}
-}
-
 func TestActiveModelLabel_ollama(t *testing.T) {
-	a := &Agent{Config: DefaultConfig()}
+	// One service (no Hailo card, nothing answering): the bare model, no
+	// service word (DR-0049 item 6).
+	a := &Agent{Config: DefaultConfig(), hailoDevicePath: filepath.Join(t.TempDir(), "no-hailo0")}
+	a.Config.Ollama.URL = "http://127.0.0.1:1"
 	a.Config.Ollama.Model = "llama3.2:3b"
-	if got := activeModelLabel(a); got != "llama3.2:3b (ollama)" {
-		t.Errorf("got %q want %q", got, "llama3.2:3b (ollama)")
-	}
-}
-
-func TestActiveModelLabel_llamafileTakesPriority(t *testing.T) {
-	a := &Agent{Config: DefaultConfig()}
-	a.Config.Llamafile.Active = "qwen-coding"
-	a.Config.Ollama.Model = "llama3.2:3b"
-	if got := activeModelLabel(a); got != "qwen-coding (llamafile)" {
-		t.Errorf("llamafile should take priority; got %q", got)
+	if got := activeModelLabel(a); got != "llama3.2:3b" {
+		t.Errorf("got %q want %q", got, "llama3.2:3b")
 	}
 }
 
@@ -201,74 +183,12 @@ func TestProbeActiveBackend_noBackendConfigured(t *testing.T) {
 	}
 }
 
-func TestProbeActiveBackend_llamafileNotRunning(t *testing.T) {
-	a := &Agent{Config: DefaultConfig()}
-	a.Config.Llamafile.Active = "qwen-coding"
-	a.Config.Llamafile.URL = "http://127.0.0.1:19991" // nothing listening here
-	if probeActiveBackend(a) {
-		t.Error("expected false when llamafile server is not running")
-	}
-}
-
 func TestProbeActiveBackend_ollamaNotRunning(t *testing.T) {
 	a := &Agent{Config: DefaultConfig()}
 	a.Config.Ollama.Model = "llama3.2:3b"
 	a.Config.Ollama.URL = "http://127.0.0.1:19992" // nothing listening here
 	if probeActiveBackend(a) {
 		t.Error("expected false when ollama server is not running")
-	}
-}
-
-// ─── isConnectionError ───────────────────────────────────────────────────────
-
-func TestIsConnectionError_refused(t *testing.T) {
-	err := fmt.Errorf("dial tcp: connect: connection refused")
-	if !isConnectionError(err) {
-		t.Error("expected true for connection refused")
-	}
-}
-
-func TestIsConnectionError_eof(t *testing.T) {
-	err := fmt.Errorf("unexpected EOF")
-	if !isConnectionError(err) {
-		t.Error("expected true for EOF")
-	}
-}
-
-func TestIsConnectionError_reset(t *testing.T) {
-	err := fmt.Errorf("read tcp: connection reset by peer")
-	if !isConnectionError(err) {
-		t.Error("expected true for connection reset")
-	}
-}
-
-func TestIsConnectionError_other(t *testing.T) {
-	err := fmt.Errorf("invalid JSON response")
-	if isConnectionError(err) {
-		t.Error("expected false for non-connection error")
-	}
-}
-
-func TestIsConnectionError_nil(t *testing.T) {
-	if isConnectionError(nil) {
-		t.Error("expected false for nil error")
-	}
-}
-
-func TestIsConnectionError_unexpectedEndOfJSONInput(t *testing.T) {
-	// json.Decoder returns this exact string when the server closes the stream
-	// mid-JSON (e.g. llama-server OOM or streaming boundary bug with SmolLM3).
-	err := fmt.Errorf("unexpected end of JSON input")
-	if !isConnectionError(err) {
-		t.Error("expected true for 'unexpected end of JSON input'")
-	}
-}
-
-func TestIsConnectionError_wrappedUnexpectedEndOfJSON(t *testing.T) {
-	// same message but wrapped — as anyllm provider may do.
-	err := fmt.Errorf("llamacpp stream: %w", fmt.Errorf("unexpected end of JSON input"))
-	if !isConnectionError(err) {
-		t.Error("expected true for wrapped 'unexpected end of JSON input'")
 	}
 }
 
@@ -284,39 +204,6 @@ func TestAttemptModelSwitch_notFound(t *testing.T) {
 	}
 	if switched {
 		t.Error("expected switched=false for unknown model name")
-	}
-}
-
-func TestAttemptModelSwitch_llamafileRegistered(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/nonexistent.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	// The switch will fail because the file doesn't exist and no server is
-	// running, but the name IS found, so switched==true and err!=nil.
-	switched, err := attemptModelSwitch(a, "qwen-coding", &buf)
-	if !switched {
-		t.Error("expected switched=true when model name is registered")
-	}
-	// An error is acceptable (server not running); what matters is switched==true.
-	_ = err
-}
-
-func TestAttemptModelSwitch_caseInsensitive(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/nonexistent.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	// Upper-case name should still find "qwen-coding".
-	switched, _ := attemptModelSwitch(a, "QWEN-CODING", &buf)
-	if !switched {
-		t.Error("expected switched=true for case-insensitive name match")
 	}
 }
 
@@ -337,56 +224,17 @@ func TestAttemptModelSwitch_aliasLookupCaseInsensitive(t *testing.T) {
 
 // ─── @mention local model switch (REPL-level) ─────────────────────────────────
 
-func TestAtMention_localModelSwitch_withFakeServer(t *testing.T) {
-	// A fake llamafile server so startAndUseLlamafile succeeds.
-	srv := fakeLlamafileServer(t, "phi-mini")
-	defer srv.Close()
-
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.URL = srv.URL
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-		{Name: "phi-mini", Path: "/tmp/p.llamafile"},
-	}
-	cfg.Llamafile.Active = "qwen-coding"
-	a := NewAgent(cfg, ws)
-	// Wire up a starting client so the REPL has a backend.
-	a.Client = newLlamafileLLMClient(srv.URL+"/v1", "qwen-coding", 0)
-
-	var buf strings.Builder
-	// attemptModelSwitch with "phi-mini" should succeed (server is reachable).
-	switched, err := attemptModelSwitch(a, "phi-mini", &buf)
-	if !switched {
-		t.Error("expected switched=true when model is registered and server reachable")
-	}
-	if err != nil {
-		t.Errorf("unexpected switch error: %v", err)
-	}
-	// After switch, active model should be phi-mini.
-	if a.Config.Llamafile.Active != "phi-mini" {
-		t.Errorf("expected LlamafileActive=phi-mini, got %q", a.Config.Llamafile.Active)
-	}
-}
-
 // TestAtMention_tagRouting_resolvesTaggedAlias verifies that @code switches to
 // the model whose alias is tagged "code", even though no alias is literally
 // named "code". This exercises the Step 3 tag-lookup path in the REPL.
 func TestAtMention_tagRouting_resolvesTaggedAlias(t *testing.T) {
-	srv := fakeLlamafileServer(t, "granite3.3:8b")
-	defer srv.Close()
-
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.Llamafile.URL = srv.URL
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "granite3.3:8b", Path: "/tmp/granite.llamafile"},
-	}
 	cfg.ModelAliases = map[string]ModelAlias{
 		"granite": {Model: "granite3.3:8b", Tags: []string{"code", "instruct"}},
 	}
 	a := NewAgent(cfg, ws)
-	a.Client = newLlamafileLLMClient(srv.URL+"/v1", "granite3.3:8b", 0)
+	a.Client = newOllamaLLMClient("http://127.0.0.1:1", "granite3.3:8b", 0)
 
 	// @code should not match any alias by name, but should resolve via tag "code"
 	// → granite alias → granite3.3:8b → attemptModelSwitch succeeds.
@@ -426,23 +274,15 @@ func TestAtMention_tagRouting_noTagMatch(t *testing.T) {
 }
 
 // TestAtMention_tagRouting_exactAliasPrecedence verifies that @granite uses
-// the exact alias (Step 2) before tag lookup (Step 3). The fake server
-// advertises the model so attemptModelSwitch can complete.
+// the exact alias (Step 2) before tag lookup (Step 3)..
 func TestAtMention_tagRouting_exactAliasPrecedence(t *testing.T) {
-	srv := fakeLlamafileServer(t, "granite3.3:8b")
-	defer srv.Close()
-
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.Llamafile.URL = srv.URL
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "granite3.3:8b", Path: "/tmp/granite.llamafile"},
-	}
 	cfg.ModelAliases = map[string]ModelAlias{
 		"granite": {Model: "granite3.3:8b", Tags: []string{"code", "instruct"}},
 	}
 	a := NewAgent(cfg, ws)
-	a.Client = newLlamafileLLMClient(srv.URL+"/v1", "granite3.3:8b", 0)
+	a.Client = newOllamaLLMClient("http://127.0.0.1:1", "granite3.3:8b", 0)
 
 	// @granite → exact alias hit via ResolveModelAlias before tag lookup runs.
 	resolved := a.Config.ResolveModelAlias("granite")
@@ -457,102 +297,6 @@ func TestAtMention_tagRouting_exactAliasPrecedence(t *testing.T) {
 	}
 	if err != nil {
 		t.Errorf("attemptModelSwitch: %v", err)
-	}
-}
-
-// ─── pickBackend tests ────────────────────────────────────────────────────────
-
-func TestPickBackend_listsLlamafilesBeforeOllama(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-		{Name: "phi-mini", Path: "/tmp/p.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	// "0\n" = select none, avoiding any actual llamafile start.
-	a.In = strings.NewReader("0\n")
-	var buf strings.Builder
-
-	_ = a.pickBackend(newTestBufioReader("0\n"), &buf, "")
-
-	out := buf.String()
-	// Both models should appear in the output.
-	if !strings.Contains(out, "qwen-coding") {
-		t.Errorf("expected qwen-coding in picker output, got: %s", out)
-	}
-	if !strings.Contains(out, "phi-mini") {
-		t.Errorf("expected phi-mini in picker output, got: %s", out)
-	}
-	// llamafile label should appear before any Ollama label.
-	qwenPos := strings.Index(out, "qwen-coding")
-	phiPos := strings.Index(out, "phi-mini")
-	if qwenPos < 0 || phiPos < 0 {
-		t.Fatal("models missing from output")
-	}
-	if qwenPos > phiPos {
-		t.Error("expected qwen-coding listed before phi-mini (registration order)")
-	}
-	// No backend should be set after selecting none.
-	if a.Client != nil {
-		t.Error("expected no client set after selecting none")
-	}
-}
-
-func TestPickBackend_autoSelectsPreferredLlamafile(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/nonexistent.llamafile"},
-		{Name: "phi-mini", Path: "/tmp/phi.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-
-	// preferredModel matches "qwen-coding" — should auto-select without showing picker.
-	// Start will fail (no binary), but the output should mention starting qwen-coding.
-	_ = a.pickBackend(newTestBufioReader(""), &buf, "qwen-coding")
-
-	out := buf.String()
-	// Should have attempted to start or use qwen-coding, not phi-mini.
-	if strings.Contains(out, "phi-mini") && !strings.Contains(out, "qwen-coding") {
-		t.Errorf("auto-select should have chosen qwen-coding, got: %s", out)
-	}
-}
-
-func TestPickBackend_noSelectionLeavesNoClient(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-
-	_ = a.pickBackend(newTestBufioReader("0\n"), &buf, "")
-
-	if a.Client != nil {
-		t.Error("expected no client when user selects 0 (none)")
-	}
-}
-
-func TestSelectBackend_callsPickBackendWhenLlamafileModelsExistButNoActive(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-	}
-	// LlamafileActive is empty — should take the pickBackend path.
-	cfg.LlamaCpp.URL = "http://127.0.0.1:1" // unreachable — prevent Case 0 adoption
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-
-	_ = a.selectBackend(newTestBufioReader("0\n"), &buf, "")
-
-	out := buf.String()
-	// The picker should have been shown (mentions qwen-coding).
-	if !strings.Contains(out, "qwen-coding") {
-		t.Errorf("expected picker to show registered llamafile, got: %s", out)
 	}
 }
 
@@ -587,100 +331,6 @@ func TestRouteSpinnerLabel_fallbackWhenNoModel(t *testing.T) {
 
 // ─── --continue / --resume model hint extraction ──────────────────────────────
 
-func TestSelectBackend_extractsModelHintFromContinuePath(t *testing.T) {
-	// Write a minimal session file that records "llamafile (qwen-coding)" as the model.
-	dir := t.TempDir()
-	sessionPath := filepath.Join(dir, "session.fountain")
-	rec, err := NewRecorder(sessionPath, "llamafile (qwen-coding)", dir)
-	if err != nil {
-		t.Fatalf("NewRecorder: %v", err)
-	}
-	_ = rec.RecordTurnWithStats("hello", "world", ChatStats{}, nil, "", nil, nil)
-	rec.Close()
-
-	// Set up agent with qwen-coding registered but no active model.
-	// Point LlamafileURL at a fake server so pickBackend can auto-select.
-	srv := fakeLlamafileServer(t, "qwen-coding")
-	defer srv.Close()
-
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Session.ContinuePath = sessionPath
-	cfg.Llamafile.URL = srv.URL
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-
-	// selectBackend should auto-select qwen-coding (from the session hint)
-	// without showing the interactive picker.
-	_ = a.selectBackend(newTestBufioReader(""), &buf, "")
-
-	// The auto-selection path connects the client.
-	if a.Client == nil {
-		t.Error("expected Client to be set after auto-selection from session hint")
-	}
-}
-
-// ─── toolCallsFromHistory ─────────────────────────────────────────────────────
-
-func TestToolCallsFromHistory_ResultExtraction(t *testing.T) {
-	msgs := []Message{
-		{
-			Role: "assistant",
-			ToolCalls: []anyllm.ToolCall{
-				{ID: "tc1", Function: anyllm.FunctionCall{Name: "read_file", Arguments: `{"path":"harvey.go"}`}},
-				{ID: "tc2", Function: anyllm.FunctionCall{Name: "run_shell", Arguments: `{"cmd":"go build ./..."}`}},
-			},
-		},
-		{Role: "tool", Content: "file contents here", ToolCallID: "tc1"},
-		{Role: "tool", Content: "error: exit status 1\nmore detail", ToolCallID: "tc2"},
-	}
-
-	records := toolCallsFromHistory(msgs, "")
-	if len(records) != 2 {
-		t.Fatalf("expected 2 records, got %d", len(records))
-	}
-	if records[0].Result != "ok" {
-		t.Errorf("tc1 result: got %q, want %q", records[0].Result, "ok")
-	}
-	if records[1].Result != "error: exit status 1" {
-		t.Errorf("tc2 result: got %q, want %q", records[1].Result, "error: exit status 1")
-	}
-}
-
-func TestToolCallsFromHistory_WithCharName(t *testing.T) {
-	msgs := []Message{
-		{
-			Role: "assistant",
-			ToolCalls: []anyllm.ToolCall{
-				{ID: "tc1", Function: anyllm.FunctionCall{Name: "list_files", Arguments: ""}},
-			},
-		},
-		{Role: "tool", Content: "file1.go\nfile2.go", ToolCallID: "tc1"},
-	}
-
-	records := toolCallsFromHistory(msgs, "LLAMA3")
-	if len(records) != 1 {
-		t.Fatalf("expected 1 record, got %d", len(records))
-	}
-	if records[0].Character != "LLAMA3" {
-		t.Errorf("Character: got %q, want %q", records[0].Character, "LLAMA3")
-	}
-}
-
-func TestToolCallsFromHistory_NoToolCalls(t *testing.T) {
-	msgs := []Message{
-		{Role: "user", Content: "hello"},
-		{Role: "assistant", Content: "world"},
-	}
-	records := toolCallsFromHistory(msgs, "")
-	if len(records) != 0 {
-		t.Errorf("expected 0 records for history with no tool calls, got %d", len(records))
-	}
-}
-
 // ─── ragAugment ───────────────────────────────────────────────────────────────
 
 // fakeOllamaEmbedServer starts an httptest server that responds to POST
@@ -697,254 +347,4 @@ func fakeOllamaEmbedServer(t *testing.T, vec []float64) *httptest.Server {
 		}
 		_ = json.NewEncoder(w).Encode(resp{Embeddings: [][]float64{vec}})
 	}))
-}
-
-func TestRAGAugment_RagOff(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	a.RagOn = false
-	out, info := a.ragAugment("hello", nil)
-	if out != "hello" || info != nil {
-		t.Errorf("expected (prompt, nil) when RagOn=false, got (%q, %v)", out, info)
-	}
-}
-
-func TestRAGAugment_NilStore(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	a.RagOn = true
-	a.Rag = nil
-	out, info := a.ragAugment("hello", nil)
-	if out != "hello" || info != nil {
-		t.Errorf("expected (prompt, nil) when Rag=nil, got (%q, %v)", out, info)
-	}
-}
-
-func TestRAGAugment_ReturnsInfo(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "test.db")
-
-	// Build a real RagStore using the stubEmbedder (defined in code_chunkers_test.go).
-	store, err := NewRagStore(dbPath, "stub")
-	if err != nil {
-		t.Fatalf("NewRagStore: %v", err)
-	}
-	defer store.db.Close()
-	if err := store.Ingest("src.go", []string{"package main"}, stubEmbedder{"stub"}); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-
-	// Fake Ollama embed endpoint returning the same unit vector as the stub embedder.
-	srv := fakeOllamaEmbedServer(t, []float64{1.0, 0.0})
-	defer srv.Close()
-
-	cfg := DefaultConfig()
-	cfg.Ollama.URL = srv.URL
-	cfg.Memory.RagStores = []RagStoreEntry{
-		{Name: "test", DBPath: dbPath, EmbeddingModel: "stub"},
-	}
-	cfg.Memory.RagActive = "test"
-
-	ws, _ := NewWorkspace(dir)
-	a := NewAgent(cfg, ws)
-	a.RagOn = true
-	a.Rag = store
-
-	augmented, info := a.ragAugment("package main", nil)
-	if info == nil {
-		t.Fatal("expected non-nil RAGAugmentInfo when chunks found")
-	}
-	if info.StoreName != "test" {
-		t.Errorf("StoreName: got %q, want %q", info.StoreName, "test")
-	}
-	if info.Chunks < 1 {
-		t.Errorf("Chunks: got %d, want >= 1", info.Chunks)
-	}
-	if info.TopScore < ragMinScore {
-		t.Errorf("TopScore %.2f is below ragMinScore %.2f", info.TopScore, ragMinScore)
-	}
-	if !strings.Contains(augmented, "package main") {
-		t.Errorf("augmented prompt missing original text: %s", augmented)
-	}
-	if !strings.Contains(augmented, "### Context") {
-		t.Errorf("augmented prompt missing context header: %s", augmented)
-	}
-	// Sources must be populated with at least the one ingested source path.
-	if len(info.Sources) == 0 {
-		t.Error("expected info.Sources to be non-empty")
-	}
-	if info.Sources[0].Source != "src.go" {
-		t.Errorf("Sources[0].Source = %q, want %q", info.Sources[0].Source, "src.go")
-	}
-}
-
-func TestRAGAugment_SkipPerPrompt(t *testing.T) {
-	// SkipPerPrompt=true must cause ragAugment to return the prompt unchanged
-	// without querying the store or calling the embedder.
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "test.db")
-	store, err := NewRagStore(dbPath, "stub")
-	if err != nil {
-		t.Fatalf("NewRagStore: %v", err)
-	}
-	defer store.db.Close()
-	// Ingest a chunk so the store is non-empty; if SkipPerPrompt is ignored,
-	// ragAugment would embed the query and find this chunk.
-	if err := store.Ingest("src.go", []string{"package main"}, stubEmbedder{"stub"}); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-
-	srv := fakeOllamaEmbedServer(t, []float64{1.0, 0.0})
-	defer srv.Close()
-
-	cfg := DefaultConfig()
-	cfg.Ollama.URL = srv.URL
-	cfg.Memory.RagStores = []RagStoreEntry{
-		{Name: "test", DBPath: dbPath, EmbeddingModel: "stub", SkipPerPrompt: true},
-	}
-	cfg.Memory.RagActive = "test"
-
-	ws, _ := NewWorkspace(dir)
-	a := NewAgent(cfg, ws)
-	a.RagOn = true
-	a.Rag = store
-
-	out, info := a.ragAugment("package main", nil)
-	if out != "package main" {
-		t.Errorf("SkipPerPrompt: expected prompt unchanged; got %q", out)
-	}
-	if info != nil {
-		t.Errorf("SkipPerPrompt: expected nil info; got %v", info)
-	}
-}
-
-func TestRAGAugment_BudgetTracker_TrimsLowerScoredChunks(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "test.db")
-
-	store, err := NewRagStore(dbPath, "stub")
-	if err != nil {
-		t.Fatalf("NewRagStore: %v", err)
-	}
-	defer store.db.Close()
-
-	// content1 scores 1.0 against the query vector [1,0]; content2 scores 0.8
-	// (still above ragMinScore=0.3, so both are "relevant") — but lower-ranked.
-	// Each is ~50 tokens (200 chars / 4) so a tracker with Total=60 fits only
-	// the first.
-	content1 := strings.Repeat("a", 200)
-	content2 := strings.Repeat("b", 200)
-	ingestEmbedder := &precomputedEmbedder{
-		name: "stub",
-		vectors: map[string][]float64{
-			content1: {1.0, 0.0},
-			content2: {0.8, 0.6},
-		},
-	}
-	if err := store.Ingest("src.go", []string{content1, content2}, ingestEmbedder); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-
-	// Query embedding is fixed at [1,0], matching content1 exactly.
-	srv := fakeOllamaEmbedServer(t, []float64{1.0, 0.0})
-	defer srv.Close()
-
-	cfg := DefaultConfig()
-	cfg.Ollama.URL = srv.URL
-	cfg.Memory.RagStores = []RagStoreEntry{
-		{Name: "test", DBPath: dbPath, EmbeddingModel: "stub"},
-	}
-	cfg.Memory.RagActive = "test"
-
-	ws, _ := NewWorkspace(dir)
-	a := NewAgent(cfg, ws)
-	a.RagOn = true
-	a.Rag = store
-
-	tracker := NewBudgetTracker(60)
-	augmented, info := a.ragAugment("query", tracker)
-	if info == nil {
-		t.Fatal("expected non-nil RAGAugmentInfo")
-	}
-	if info.Chunks != 1 {
-		t.Errorf("info.Chunks = %d, want 1 (only the highest-scored chunk fits)", info.Chunks)
-	}
-	if !strings.Contains(augmented, content1) {
-		t.Error("expected augmented prompt to contain the highest-scored chunk (content1)")
-	}
-	if strings.Contains(augmented, content2) {
-		t.Error("expected augmented prompt to omit the lower-scored chunk (content2)")
-	}
-	if !strings.Contains(augmented, "omitted") {
-		t.Errorf("expected an omission note in the augmented prompt, got: %s", augmented)
-	}
-	if !strings.Contains(augmented, "query") {
-		t.Error("expected augmented prompt to still end with the original prompt text")
-	}
-}
-
-// TestBudgetTracker_SharedAcrossRAGAndFileInjection proves the BudgetTracker
-// is a genuinely shared per-turn pool, not two independent budgets: RAG
-// consuming most of it must measurably reduce what injectOrChunk can still
-// fit afterward in the same turn.
-func TestBudgetTracker_SharedAcrossRAGAndFileInjection(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "test.db")
-
-	store, err := NewRagStore(dbPath, "stub")
-	if err != nil {
-		t.Fatalf("NewRagStore: %v", err)
-	}
-	defer store.db.Close()
-
-	// ~200 tokens (800 chars / 4).
-	ragContent := strings.Repeat("r", 800)
-	ingestEmbedder := &precomputedEmbedder{
-		name:    "stub",
-		vectors: map[string][]float64{ragContent: {1.0, 0.0}},
-	}
-	if err := store.Ingest("src.go", []string{ragContent}, ingestEmbedder); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-
-	srv := fakeOllamaEmbedServer(t, []float64{1.0, 0.0})
-	defer srv.Close()
-
-	cfg := DefaultConfig()
-	cfg.Ollama.URL = srv.URL
-	cfg.Ollama.ContextLength = 8192
-	cfg.Chunking = DefaultChunkConfig()
-	cfg.Memory.RagStores = []RagStoreEntry{
-		{Name: "test", DBPath: dbPath, EmbeddingModel: "stub"},
-	}
-	cfg.Memory.RagActive = "test"
-
-	ws, _ := NewWorkspace(dir)
-	a := NewAgent(cfg, ws)
-	a.RagOn = true
-	a.Rag = store
-	a.Client = &mockLLMClient{reply: "ok"}
-
-	// ~40 tokens (160 chars / 4) — comfortably fits a fresh 8192-token budget,
-	// but not the ~20 tokens left over after RAG consumes ~200 from a
-	// deliberately tight shared tracker.
-	fileContent := strings.Repeat("f", 160)
-	if err := os.WriteFile(filepath.Join(dir, "small.md"), []byte(fileContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	tracker := NewBudgetTracker(220)
-	var out strings.Builder
-	augmented, _ := a.ragAugment("review small.md", tracker)
-	if !strings.Contains(augmented, ragContent) {
-		t.Fatalf("expected RAG content in augmented prompt: %s", augmented)
-	}
-
-	final := a.injectOrChunk(context.Background(), augmented, &out, tracker)
-	if strings.Contains(final, "### File: small.md") {
-		t.Error("expected small.md to be skipped — RAG already consumed most of the shared budget")
-	}
-	if !strings.Contains(final, "small.md") {
-		t.Errorf("expected an omission note naming small.md; got:\n%s", final)
-	}
 }

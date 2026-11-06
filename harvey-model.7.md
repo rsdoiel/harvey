@@ -14,7 +14,7 @@ MODEL — backend-agnostic model management and inline switching
 
 # DESCRIPTION
 
-The /model command manages models across all backends (llamafile and Ollama)
+The /model command manages models across Ollama and hailo-ollama
 using a single consistent interface. Use it when you don't want to remember
 which backend is active.
 
@@ -29,14 +29,13 @@ History is preserved — the switch is like a new character entering the scene.
     details for that model.
 
   /model list
-    List all registered models across llamafile and Ollama, marking the
+    List all registered models across Ollama and hailo-ollama, marking the
     active entry with an arrow.
 
   /model use NAME
-    Switch to the named model. Harvey checks llamafile models first, then
-    Ollama and Hailo models. NAME may be written engine/model (hailo/llama3.2:3b,
-    ollama/llama3.2:3b, llamacpp/..., llamafile/...) to name the engine; only
-    those four prefixes are read as an engine. A bare name that exists on more
+    Switch to the named model. NAME may be written engine/model
+    (hailo/llama3.2:3b, ollama/llama3.2:3b) to name the engine; only
+    those two prefixes are read as an engine. A bare name that exists on more
     than one engine is never chosen for you: at a terminal Harvey lists the
     qualified forms and asks, and otherwise it exits 2 naming them.
 
@@ -63,7 +62,7 @@ no switch occurs. History is never cleared on a switch — the new model sees
 the full conversation so far.
 
 Switch notes are written to the session file:
-  [[model switch: phi-mini (llamafile) at 2026-06-20 14:32:11]]
+  [[model switch: phi-mini (ollama) at 2026-06-20 14:32:11]]
 
 # MODEL ALIASES
 

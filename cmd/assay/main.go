@@ -1,11 +1,13 @@
 // assay runs evaluation prompts from a corpus YAML against one or more
 // LLM backends and writes a Markdown report plus JSON results for human
-// review and machine processing. Supports Ollama, Llamafile, and llama.cpp.
+// review and machine processing. Supports Ollama.
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -34,6 +37,9 @@ type Prompt struct {
 	Description string   `yaml:"description"`
 	Language    string   `yaml:"language"`
 	Dialect     string   `yaml:"dialect,omitempty"`
+	// Tokens is the prompt's approximate size, a hint for the profile: probes
+	// that test a model's window are written at a stated size. Zero = no hint.
+	Tokens      int      `yaml:"tokens,omitempty"`
 	PromptText  string   `yaml:"prompt"`
 	Checks      Checks   `yaml:"checks"`
 	Human       []string `yaml:"human"`
@@ -46,6 +52,11 @@ type Checks struct {
 	Contains    []string `yaml:"contains,omitempty"`
 	NotContains []string `yaml:"not_contains,omitempty"`
 	SQLParses   bool     `yaml:"sql_parses,omitempty"`
+	// Profile checks (DR-0051): see probe_checks.go.
+	ToolCall *ToolCallCheck `yaml:"tool_call,omitempty"`
+	NoTool   bool           `yaml:"no_tool,omitempty"`
+	UsesTail string         `yaml:"uses_tail,omitempty"`
+	Exact    string         `yaml:"exact,omitempty"`
 }
 
 // ─── Ollama model-list type ───────────────────────────────────────────────────
@@ -65,32 +76,53 @@ type CheckResult struct {
 }
 
 // PromptResult holds the outcome of running one prompt against one model.
-// Variant is "base" (no RAG), "rag" (RAG context injected), or "" (RAG not
-// configured for this run).
+// Variant is "base" (no guide), "guide" (the guide file as a system message), or ""
+// (not a comparison run).
 type PromptResult struct {
 	PromptID     string        `json:"prompt_id"`
 	Category     string        `json:"category"`
 	Model        string        `json:"model"`
+	Service      string        `json:"service,omitempty"`
+	PromptSizeEst int          `json:"prompt_size_est,omitempty"`
 	Variant      string        `json:"variant,omitempty"`
 	Response     string        `json:"response"`
 	Elapsed      time.Duration `json:"elapsed_ns"`
 	PromptTokens int           `json:"prompt_tokens"`
 	ReplyTokens  int           `json:"reply_tokens"`
 	TokensPerSec float64       `json:"tokens_per_sec"`
+	// FirstToken is how long the reply took to start: from sending the request
+	// to the first content arriving. Zero (omitted) when no content arrived.
+	FirstToken time.Duration `json:"first_token_ns,omitempty"`
+	// DecodeTokensPerSec is the reply rate after the first token, so prefill is
+	// not counted; TokensPerSec divides by the whole call. Omitted when unknown.
+	DecodeTokensPerSec float64 `json:"decode_tokens_per_sec,omitempty"`
 	Checks       []CheckResult `json:"checks"`
 	AutoPass     bool          `json:"auto_pass"`
-	RagChunks    int           `json:"rag_chunks,omitempty"` // chunks injected; 0 = no RAG
+}
+
+/** Label names the target a result came from, "service/model", so the same model
+ * name on two servers stays two rows. A result with no service (an older
+ * results.json) is labelled by its model alone.
+ *
+ * Returns:
+ *   string — the label.
+ *
+ * Example:
+ *   PromptResult{Service: "hailo", Model: "qwen3:1.7b"}.Label() // "hailo/qwen3:1.7b"
+ */
+func (r PromptResult) Label() string {
+	if r.Service == "" {
+		return r.Model
+	}
+	return r.Service + "/" + r.Model
 }
 
 type AssayResults struct {
 	RunAt         time.Time      `json:"run_at"`
-	Backend       string         `json:"backend"`                  // "Ollama", "Llamafile", or "LlamaCpp"
-	LlamafilePath string         `json:"llamafile_path,omitempty"` // binary path when Backend=="Llamafile"
+	Backend       string         `json:"backend"`                  // always "Ollama"
 	OllamaURL     string         `json:"ollama_url,omitempty"`
-	BackendURL    string         `json:"backend_url,omitempty"`    // inference URL for Llamafile and LlamaCpp
-	RagDB         string         `json:"rag_db,omitempty"`
-	RagEmbedModel string         `json:"rag_embed_model,omitempty"`
-	RagCompare    bool           `json:"rag_compare,omitempty"`
+	HailoURL      string         `json:"hailo_url,omitempty"`
+	Warmups       []Warmup       `json:"warmups,omitempty"`
 	GuideFile     string         `json:"guide_file,omitempty"`
 	GuideCompare  bool           `json:"guide_compare,omitempty"`
 	Results       []PromptResult `json:"results"`
@@ -103,20 +135,38 @@ func loadCorpus(path string) (*Corpus, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read corpus: %w", err)
 	}
+	// Strict: a misspelt key (contian: for contains:) would otherwise be
+	// ignored and the check silently never run.
 	var c Corpus
-	if err := yaml.Unmarshal(src, &c); err != nil {
-		return nil, harvey.Dataf("parse corpus: %w", err)
+	dec := yaml.NewDecoder(bytes.NewReader(src))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
+		return nil, harvey.Dataf("parse corpus %s: %w", path, err)
 	}
 	if len(c.Prompts) == 0 {
 		return nil, harvey.Dataf("corpus %s has no prompts", path)
+	}
+	seen := map[string]bool{}
+	for i, p := range c.Prompts {
+		switch {
+		case p.ID == "":
+			return nil, harvey.Dataf("corpus %s: prompt %d has no id", path, i+1)
+		case seen[p.ID]:
+			return nil, harvey.Dataf("corpus %s: prompt id %q appears twice", path, p.ID)
+		case p.Tokens < 0:
+			return nil, harvey.Dataf("corpus %s: prompt %q has tokens %d; a size hint cannot be negative", path, p.ID, p.Tokens)
+		}
+		if err := validateProbeChecks(p); err != nil {
+			return nil, harvey.Dataf("corpus %s: %w", path, err)
+		}
+		seen[p.ID] = true
 	}
 	return &c, nil
 }
 
 // ─── LLM client helpers ───────────────────────────────────────────────────────
 
-/** newAssayClient creates an LLMClient backed by any OpenAI-compatible server.
- * It appends "/v1" to baseURL so callers pass the bare host:port.
+/** newAssayClient creates an LLMClient backed by an Ollama server.
  *
  * Parameters:
  *   baseURL (string) — bare base URL, e.g. "http://localhost:11434"
@@ -130,7 +180,7 @@ func loadCorpus(path string) (*Corpus, error) {
  *   defer client.Close()
  */
 func newAssayClient(baseURL, model string) harvey.LLMClient {
-	return harvey.NewLlamafileLLMClient(baseURL+"/v1", model, 120*time.Second)
+	return harvey.NewOllamaLLMClient(baseURL, model, 120*time.Second)
 }
 
 // ─── Ollama model-list helper ─────────────────────────────────────────────────
@@ -156,77 +206,195 @@ func listOllamaModels(baseURL string) ([]string, error) {
 	return names, nil
 }
 
-/** listOpenAIModels queries GET /v1/models on an OpenAI-compatible server and
- * returns the model IDs reported. llama-server returns only the loaded model.
- *
- * Parameters:
- *   baseURL (string) — bare base URL, e.g. "http://localhost:8081"
- *
- * Returns:
- *   []string — model IDs (empty IDs are skipped)
- *   error    — non-nil on HTTP or JSON error
- *
- * Example:
- *   models, err := listOpenAIModels("http://localhost:8081")
- */
-func listOpenAIModels(baseURL string) ([]string, error) {
-	resp, err := http.Get(baseURL + "/v1/models")
-	if err != nil {
-		return nil, fmt.Errorf("openai models list: %w", err)
-	}
-	defer resp.Body.Close()
-	var out struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, harvey.Unavailablef("openai models decode: %w", err)
-	}
-	ids := make([]string, 0, len(out.Data))
-	for _, d := range out.Data {
-		if d.ID != "" {
-			ids = append(ids, d.ID)
-		}
-	}
-	return ids, nil
+// ─── Targets: service/model on Ollama and hailo-ollama ────────────────────────
+
+// target is one model on one server: the unit assay runs prompts against.
+type target struct {
+	Service string // "ollama" or "hailo"
+	Model   string // the name the server knows, with no service prefix
+	URL     string // the server's base URL
 }
 
-// ─── RAG helpers ─────────────────────────────────────────────────────────────
+// Label returns "service/model", the name used in reports and progress lines.
+func (t target) Label() string { return t.Service + "/" + t.Model }
 
-// ragMinScore is the minimum cosine similarity for a chunk to be injected.
-// Matches the threshold used by Harvey's interactive chat loop.
-const ragMinScore = 0.3
+/** newTargetClient creates an LLMClient for one target. A hailo target is
+ * marked as such so the request is built for that engine.
+ *
+ * Parameters:
+ *   t (target)              — the server and model
+ *   timeout (time.Duration) — how long to wait for one call
+ *
+ * Returns:
+ *   *harvey.OllamaChatClient — ready-to-use client; caller should Close() when done
+ *
+ * Example:
+ *   c := newTargetClient(target{"hailo", "qwen3:1.7b", "http://localhost:8000"}, 120*time.Second)
+ *   defer c.Close()
+ */
+func newTargetClient(t target, timeout time.Duration) *harvey.OllamaChatClient {
+	c := harvey.NewOllamaLLMClient(t.URL, t.Model, timeout)
+	c.SetEngine(t.Service)
+	c.SetService(t.Service)
+	return c
+}
 
-// buildRAGContext queries the RAG store for chunks relevant to promptText and
-// returns a formatted context prefix ready to prepend to the prompt, plus the
-// number of chunks included. Returns ("", 0) when no relevant chunks are found
-// or the store cannot be queried.
-func buildRAGContext(store *harvey.RagStore, embedder harvey.Embedder, promptText string, topK int) (string, int) {
-	chunks, err := store.Query(promptText, embedder, topK)
-	if err != nil || len(chunks) == 0 {
-		return "", 0
+/** resolveTargets turns the --models value into targets. "ollama/x" and
+ * "hailo/x" name their server. A bare name is looked up on both servers: on
+ * both is a usage error naming the two candidates, on one it goes there, on
+ * neither it stays on Ollama (as before; assay does not second-guess a model
+ * it cannot see). With no --models every model on each server that answers is
+ * a target; a server that does not answer is skipped with a note on errOut,
+ * and none answering is unavailable.
+ *
+ * Parameters:
+ *   models (string)    — the --models value, comma separated; "" for all
+ *   ollamaURL (string) — base URL of the Ollama server
+ *   hailoURL (string)  — base URL of the hailo-ollama server
+ *   errOut (io.Writer) — where notes about skipped servers go
+ *
+ * Returns:
+ *   []target — the targets in the order named (or Ollama's, then hailo's)
+ *   error    — a classed error: usage, unavailable, or negative (nothing to run)
+ *
+ * Example:
+ *   ts, err := resolveTargets("hailo/qwen3:1.7b", ollamaURL, hailoURL, os.Stderr)
+ */
+func resolveTargets(models, ollamaURL, hailoURL string, errOut io.Writer) ([]target, error) {
+	urls := map[string]string{"ollama": ollamaURL, "hailo": hailoURL}
+	order := []string{"ollama", "hailo"}
+	listed := map[string][]string{}
+	listErr := map[string]error{}
+	list := func(svc string) {
+		if _, done := listed[svc]; done || listErr[svc] != nil {
+			return
+		}
+		names, err := listOllamaModels(urls[svc])
+		if err != nil {
+			listErr[svc] = err
+			return
+		}
+		listed[svc] = names
 	}
-	var relevant []harvey.Chunk
-	for _, c := range chunks {
-		if c.Score >= ragMinScore {
-			relevant = append(relevant, c)
+	has := func(svc, model string) bool {
+		for _, n := range listed[svc] {
+			if n == model {
+				return true
+			}
+		}
+		return false
+	}
+
+	if models != "" {
+		var out []target
+		for _, m := range strings.Split(models, ",") {
+			if m = strings.TrimSpace(m); m == "" {
+				continue
+			}
+			if svc, name := harvey.ParseQualifiedModel(m); svc != "" {
+				out = append(out, target{svc, name, urls[svc]})
+				continue
+			}
+			list("ollama")
+			list("hailo")
+			switch onO, onH := has("ollama", m), has("hailo", m); {
+			case onO && onH:
+				return nil, harvey.Usagef("%s is on more than one server: ollama/%s or hailo/%s", m, m, m)
+			case onH:
+				out = append(out, target{"hailo", m, urls["hailo"]})
+			default:
+				out = append(out, target{"ollama", m, urls["ollama"]})
+			}
+		}
+		return out, nil
+	}
+
+	for _, svc := range order {
+		list(svc)
+	}
+	var out []target
+	for _, svc := range order {
+		if err := listErr[svc]; err != nil {
+			fmt.Fprintf(errOut, "assay: skipping the %s server at %s: %v\n", svc, urls[svc], err)
+			continue
+		}
+		for _, n := range listed[svc] {
+			out = append(out, target{svc, n, urls[svc]})
 		}
 	}
-	if len(relevant) == 0 {
-		return "", 0
+	if len(listed) == 0 {
+		return nil, fmt.Errorf("could not list models on either server: %w", listErr["ollama"])
 	}
-	var sb strings.Builder
-	sb.WriteString("### Context (from knowledge base)\n\n")
-	for i, c := range relevant {
-		if c.Source != "" {
-			fmt.Fprintf(&sb, "[%d] (source: %s)\n%s\n\n", i+1, c.Source, c.Content)
-		} else {
-			fmt.Fprintf(&sb, "[%d] %s\n\n", i+1, c.Content)
+	return out, nil
+}
+
+// firstWriteRecorder collects a streamed reply and notes when its first
+// content arrived. Both engines stream content as it is produced, and hailo
+// reports no eval durations, so this is how assay measures time to first token.
+type firstWriteRecorder struct {
+	buf   strings.Builder
+	first time.Time
+}
+
+// Write records the reply text and, on the first non-empty write, the time.
+func (r *firstWriteRecorder) Write(p []byte) (int, error) {
+	if len(p) > 0 && r.first.IsZero() {
+		r.first = time.Now()
+	}
+	return r.buf.Write(p)
+}
+
+// minDecodeWindow is the least time after the first content for which a decode
+// rate is reported.
+const minDecodeWindow = 100 * time.Millisecond
+
+/** decodeRate is the reply tokens per second after the first token arrived.
+ *
+ * Parameters:
+ *   replyTokens (int)        — tokens in the reply, as the server counted them
+ *   elapsed (time.Duration)  — the whole call
+ *   firstToken (time.Duration) — time to the first content
+ *
+ * Returns:
+ *   float64 — tokens per second, or 0 when it cannot be computed (no tokens,
+ *   no first token, or less than 100 ms after it).
+ *
+ * Example:
+ *   decodeRate(20, 250*time.Millisecond, 150*time.Millisecond) // 200
+ */
+func decodeRate(replyTokens int, elapsed, firstToken time.Duration) float64 {
+	d := elapsed - firstToken
+	// A reply the server held back and sent in one burst (a tool call, or a
+	// buffering engine) has almost no time after its first content, and a rate
+	// over a few milliseconds is meaningless: report it as unknown.
+	if replyTokens <= 0 || firstToken <= 0 || d < minDecodeWindow {
+		return 0
+	}
+	return float64(replyTokens) / d.Seconds()
+}
+
+/** corpusCategories lists the categories (capabilities) a corpus has, in the
+ * order they first appear.
+ *
+ * Parameters:
+ *   c (*Corpus) — the loaded corpus
+ *
+ * Returns:
+ *   []string — each category once
+ *
+ * Example:
+ *   corpusCategories(c) // ["go", "sql", "tool-call"]
+ */
+func corpusCategories(c *Corpus) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, p := range c.Prompts {
+		if !seen[p.Category] {
+			seen[p.Category] = true
+			out = append(out, p.Category)
 		}
 	}
-	sb.WriteString("---\n\n")
-	return sb.String(), len(relevant)
+	return out
 }
 
 // ─── Guide-compare helpers ────────────────────────────────────────────────────
@@ -335,7 +503,7 @@ func runCompileCheck(response string) (src string, compileResult, vetResult Chec
 	}
 	defer os.RemoveAll(dir)
 
-	goFile := filepath.Join(dir, "assay_test.go")
+	goFile := filepath.Join(dir, "answer.go")
 	if err := os.WriteFile(goFile, []byte(src), 0644); err != nil {
 		compileResult.Detail = "could not write temp file: " + err.Error()
 		vetResult.Detail = "skipped"
@@ -350,7 +518,11 @@ func runCompileCheck(response string) (src string, compileResult, vetResult Chec
 		return src, compileResult, vetResult
 	}
 
-	buildOut, err := exec.Command("go", "build", "./...").CombinedOutput()
+	// Build in the temp dir, not the working directory: the answer is the
+	// thing being judged, whatever module assay was started from.
+	build := exec.Command("go", "build", "./...")
+	build.Dir = dir
+	buildOut, err := build.CombinedOutput()
 	compileResult.Passed = err == nil
 	if err != nil {
 		compileResult.Detail = strings.TrimSpace(string(buildOut))
@@ -358,7 +530,9 @@ func runCompileCheck(response string) (src string, compileResult, vetResult Chec
 		return src, compileResult, vetResult
 	}
 
-	vetOut, err := exec.Command("go", "vet", "./...").CombinedOutput()
+	vet := exec.Command("go", "vet", "./...")
+	vet.Dir = dir
+	vetOut, err := vet.CombinedOutput()
 	vetResult.Passed = err == nil
 	if err != nil {
 		vetResult.Detail = strings.TrimSpace(string(vetOut))
@@ -444,11 +618,11 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 	var modelOrder []string
 	seenModel := make(map[string]bool)
 	for _, r := range ar.Results {
-		if !seenModel[r.Model] {
-			modelOrder = append(modelOrder, r.Model)
-			seenModel[r.Model] = true
+		if !seenModel[r.Label()] {
+			modelOrder = append(modelOrder, r.Label())
+			seenModel[r.Label()] = true
 		}
-		byVariant[variantKey{r.Model, r.PromptID, r.Variant}] = r
+		byVariant[variantKey{r.Label(), r.PromptID, r.Variant}] = r
 	}
 
 	// Collect ordered prompt IDs from results (preserving corpus order).
@@ -465,55 +639,16 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 	fmt.Fprintf(&sb, "# Assay Report\n\n")
 	fmt.Fprintf(&sb, "Run at: %s  \n", ar.RunAt.Format(time.RFC3339))
 	fmt.Fprintf(&sb, "Backend: %s  \n", ar.Backend)
-	if ar.LlamafilePath != "" {
-		fmt.Fprintf(&sb, "Binary: `%s`  \n", ar.LlamafilePath)
-	}
-	if ar.BackendURL != "" {
-		fmt.Fprintf(&sb, "URL: %s  \n", ar.BackendURL)
-	} else if ar.OllamaURL != "" {
+	if ar.OllamaURL != "" {
 		fmt.Fprintf(&sb, "URL: %s  \n", ar.OllamaURL)
 	}
 	fmt.Fprintln(&sb)
-	if ar.RagDB != "" {
-		fmt.Fprintf(&sb, "RAG store: `%s` (embed: %s)\n\n", ar.RagDB, ar.RagEmbedModel)
-	}
+
+	sb.WriteString(profileSection(ar))
 
 	// Summary table.
 	fmt.Fprintf(&sb, "## Summary\n\n")
-	if ar.RagCompare {
-		fmt.Fprintf(&sb, "| Model | Base pass | RAG pass | Δ | Avg tok/s |\n")
-		fmt.Fprintf(&sb, "|---|---|---|---|---|\n")
-		for _, model := range modelOrder {
-			basePass, ragPass, total := 0, 0, 0
-			var totalTPS float64
-			count := 0
-			for _, pid := range promptIDOrder {
-				base, hasBase := byVariant[variantKey{model, pid, "base"}]
-				rag, hasRag := byVariant[variantKey{model, pid, "rag"}]
-				if hasBase {
-					total++
-					if base.AutoPass {
-						basePass++
-					}
-					totalTPS += base.TokensPerSec
-					count++
-				}
-				if hasRag && hasBase {
-					if rag.AutoPass {
-						ragPass++
-					}
-				}
-			}
-			delta := ragPass - basePass
-			deltaStr := fmt.Sprintf("%+d", delta)
-			avgTPS := 0.0
-			if count > 0 {
-				avgTPS = totalTPS / float64(count)
-			}
-			fmt.Fprintf(&sb, "| %s | %d/%d | %d/%d | %s | %.1f |\n",
-				model, basePass, total, ragPass, total, deltaStr, avgTPS)
-		}
-	} else if ar.GuideCompare {
+	if ar.GuideCompare {
 		fmt.Fprintf(&sb, "| Model | Base pass | Guide pass | Δ | Avg tok/s |\n")
 		fmt.Fprintf(&sb, "|---|---|---|---|---|\n")
 		for _, model := range modelOrder {
@@ -554,7 +689,7 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 			var totalTPS float64
 			count := 0
 			for _, r := range ar.Results {
-				if r.Model != model {
+				if r.Label() != model {
 					continue
 				}
 				if r.AutoPass {
@@ -584,75 +719,7 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 				continue
 			}
 
-			if ar.RagCompare {
-				base, hasBase := byVariant[variantKey{model, pid, "base"}]
-				rag, hasRag := byVariant[variantKey{model, pid, "rag"}]
-				if !hasBase && !hasRag {
-					continue
-				}
-				fmt.Fprintf(&sb, "### %s\n\n", pid)
-				fmt.Fprintf(&sb, "**%s**\n\n", p.Description)
-				fmt.Fprintf(&sb, "| | Base | RAG |\n|---|---|---|\n")
-				baseLabel, ragLabel := "—", "—"
-				if hasBase {
-					if base.AutoPass {
-						baseLabel = "✓ PASS"
-					} else {
-						baseLabel = "✗ FAIL"
-					}
-				}
-				if hasRag {
-					if rag.AutoPass {
-						ragLabel = "✓ PASS"
-					} else {
-						ragLabel = "✗ FAIL"
-					}
-				}
-				fmt.Fprintf(&sb, "| Auto checks | %s | %s |\n", baseLabel, ragLabel)
-				if hasBase && hasRag {
-					fmt.Fprintf(&sb, "| Chunks injected | — | %d |\n", rag.RagChunks)
-					fmt.Fprintf(&sb, "| Tokens/s | %.1f | %.1f |\n", base.TokensPerSec, rag.TokensPerSec)
-					fmt.Fprintf(&sb, "| Elapsed | %s | %s |\n",
-						base.Elapsed.Round(time.Millisecond),
-						rag.Elapsed.Round(time.Millisecond))
-				}
-				sb.WriteString("\n")
-
-				// Per-check delta table.
-				if hasBase && hasRag && len(base.Checks) > 0 {
-					fmt.Fprintf(&sb, "| Check | Base | RAG |\n|---|---|---|\n")
-					for i, cr := range base.Checks {
-						baseMark := "✓"
-						if !cr.Passed {
-							baseMark = "✗"
-						}
-						ragMark := "—"
-						if i < len(rag.Checks) {
-							if rag.Checks[i].Passed {
-								ragMark = "✓"
-							} else {
-								ragMark = "✗"
-							}
-						}
-						fmt.Fprintf(&sb, "| %s | %s | %s |\n", cr.Name, baseMark, ragMark)
-					}
-					sb.WriteString("\n")
-				}
-
-				// Collapsed responses.
-				lang := p.Language
-				if lang == "" {
-					lang = "text"
-				}
-				if hasBase {
-					fmt.Fprintf(&sb, "<details><summary>Base response</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
-						lang, strings.TrimSpace(base.Response))
-				}
-				if hasRag {
-					fmt.Fprintf(&sb, "<details><summary>RAG response (%d chunks)</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
-						rag.RagChunks, lang, strings.TrimSpace(rag.Response))
-				}
-			} else if ar.GuideCompare {
+			if ar.GuideCompare {
 				base, hasBase := byVariant[variantKey{model, pid, "base"}]
 				guide, hasGuide := byVariant[variantKey{model, pid, "guide"}]
 				if !hasBase && !hasGuide {
@@ -725,7 +792,7 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 				if !ok {
 					// Fall back to scanning by model+prompt.
 					for _, res := range ar.Results {
-						if res.Model == model && res.PromptID == pid {
+						if res.Label() == model && res.PromptID == pid {
 							r = res
 							ok = true
 							break
@@ -740,9 +807,6 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 				fmt.Fprintf(&sb, "**%s**  \n", p.Description)
 
 				variantNote := ""
-				if r.Variant == "rag" {
-					variantNote = fmt.Sprintf(" · RAG (%d chunks)", r.RagChunks)
-				}
 				elapsed := r.Elapsed.Round(time.Millisecond)
 				fmt.Fprintf(&sb, "**Timing**: %d prompt + %d reply tokens · %s · %.1f tok/s%s  \n",
 					r.PromptTokens, r.ReplyTokens, elapsed, r.TokensPerSec, variantNote)
@@ -845,13 +909,11 @@ type assayFlags struct {
 	modelsFlag *string
 	category *string
 	ollamaURL *string
-	llamafilePath *string
-	llamacppURL *string
+	hailoURL *string
+	warmup *bool
+	runs *int
+	timeout *float64
 	outputDir *string
-	ragDB *string
-	ragEmbedModel *string
-	ragTopK *int
-	ragCompare *bool
 	guideFile *string
 	guideCompare *bool
 }
@@ -861,20 +923,18 @@ type assayFlags struct {
 // the OPTIONS section of the manual.
 func defineAssayFlags(fs *flag.FlagSet) assayFlags {
 	corpusPath    := fs.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
-	modelsFlag    := fs.String("models", "", "comma-separated model list (default: all from Ollama)")
+	modelsFlag    := fs.String("models", "", "comma-separated model list, service/model (default: all on both servers)")
 	category      := fs.String("category", "", "only run prompts from this category")
 	ollamaURL     := fs.String("ollama", "http://localhost:11434", "Ollama base URL")
-	llamafilePath := fs.String("llamafile", "", "path to a llamafile binary to evaluate; starts and stops the process automatically")
-	llamacppURL   := fs.String("llamacpp", "", "base URL of a running llama-server (e.g. http://localhost:8081); user manages the process")
+	hailoURL      := fs.String("hailo", "http://localhost:8000", "hailo-ollama base URL")
+	warmup        := fs.Bool("warmup", true, "send one unrecorded request to each model first, so timings are warm\n\t\t\t(--warmup=false to skip)")
+	runs          := fs.Int("runs", 1, "trials of each prompt (the matrix reports pass/trials)")
+	timeout       := fs.Float64("timeout", 120, "seconds to wait for one model call")
 	outputDir     := fs.String("output", defaultOutputDir(),
 		"write report and results to PATH\n\t\t\t(default: $WORKSPACE/assay-results/assay-TIMESTAMP/\n\t\t\t or assay-results/assay-TIMESTAMP/ if not in a workspace)")
-	ragDB         := fs.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
-	ragEmbedModel := fs.String("rag-embed-model", "nomic-embed-text", "embedding model for RAG queries")
-	ragTopK       := fs.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
-	ragCompare    := fs.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
 	guideFile     := fs.String("guide-file", "", "path to a text file whose content becomes the system message for the 'guide' variant")
 	guideCompare  := fs.Bool("guide-compare", false, "run each prompt twice (base + guide) and show delta; requires --guide-file")
-	return assayFlags{corpusPath: corpusPath, modelsFlag: modelsFlag, category: category, ollamaURL: ollamaURL, llamafilePath: llamafilePath, llamacppURL: llamacppURL, outputDir: outputDir, ragDB: ragDB, ragEmbedModel: ragEmbedModel, ragTopK: ragTopK, ragCompare: ragCompare, guideFile: guideFile, guideCompare: guideCompare}
+	return assayFlags{corpusPath: corpusPath, modelsFlag: modelsFlag, category: category, ollamaURL: ollamaURL, hailoURL: hailoURL, warmup: warmup, runs: runs, timeout: timeout, outputDir: outputDir, guideFile: guideFile, guideCompare: guideCompare}
 }
 
 // mainRun is the whole of assay's command line, with the process's arguments and
@@ -919,13 +979,8 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	modelsFlag := f.modelsFlag
 	category := f.category
 	ollamaURL := f.ollamaURL
-	llamafilePath := f.llamafilePath
-	llamacppURL := f.llamacppURL
+	hailoURL := f.hailoURL
 	outputDir := f.outputDir
-	ragDB := f.ragDB
-	ragEmbedModel := f.ragEmbedModel
-	ragTopK := f.ragTopK
-	ragCompare := f.ragCompare
 	guideFile := f.guideFile
 	guideCompare := f.guideCompare
 	if err := fs.Parse(args[1:]); err != nil {
@@ -938,18 +993,16 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		return usageFail(fmt.Sprintf("unexpected argument: %s", fs.Arg(0)))
 	}
 
-	if *ragCompare && *ragDB == "" {
-		return usageFail("--rag-compare requires --rag-db")
-	}
 	if *guideCompare && *guideFile == "" {
 		return usageFail("--guide-compare requires --guide-file")
 	}
-	if *guideCompare && *ragCompare {
-		return usageFail("--guide-compare and --rag-compare are mutually exclusive")
+	if *f.runs < 1 {
+		return usageFail("--runs must be at least 1")
 	}
-	if *llamafilePath != "" && *llamacppURL != "" {
-		return usageFail("--llamafile and --llamacpp are mutually exclusive")
+	if *f.timeout <= 0 {
+		return usageFail("--timeout must be greater than 0 seconds")
 	}
+	callTimeout := time.Duration(*f.timeout * float64(time.Second))
 
 	// A run does everything it can, then exits with the class of the first
 	// failed step (workspace DR-0003: no exit 0 with failures). note remembers
@@ -962,118 +1015,46 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		}
 	}
 
-	// Backend selection: determine llmURL, backend name, and start any managed process.
-	llmURL    := *ollamaURL
-	backend   := "Ollama"
-	backendURL := ""
-
-	switch {
-	case *llamafilePath != "":
-		if err := harvey.CheckLlamafileInput(*llamafilePath); err != nil {
-			return fail(err)
-		}
-		// RAG + llamafile requires Ollama for embeddings.
-		if *ragDB != "" && !harvey.ProbeLlamafile(*ollamaURL+"/api/tags") {
-			return fail(harvey.Unavailablef("RAG evaluation with --llamafile requires Ollama for embeddings.\n"+
-				"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s", *ollamaURL))
-		}
-		port, err := harvey.FindFreePort()
-		if err != nil {
-			return fail(fmt.Errorf("llamafile: cannot find free port: %w", err))
-		}
-		llmURL = fmt.Sprintf("http://localhost:%d", port)
-		fmt.Fprintf(out, "Starting llamafile %s on %s ...\n", filepath.Base(*llamafilePath), llmURL)
-		proc, err := harvey.StartLlamafileService(*llamafilePath, llmURL, "", 30*time.Second, -1, 0, out)
-		if err != nil {
-			return fail(fmt.Errorf("llamafile: %w", err))
-		}
-		defer proc.Kill()
-		fmt.Fprintf(out, "  Llamafile ready at %s\n", llmURL)
-		backend    = "Llamafile"
-		backendURL = llmURL
-
-	case *llamacppURL != "":
-		// RAG + llamacpp requires Ollama for embeddings.
-		if *ragDB != "" && !harvey.ProbeLlamafile(*ollamaURL+"/api/tags") {
-			return fail(harvey.Unavailablef("RAG evaluation with --llamacpp requires Ollama for embeddings.\n"+
-				"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s", *ollamaURL))
-		}
-		llmURL    = *llamacppURL
-		backend   = "LlamaCpp"
-		backendURL = llmURL
-	}
-
 	corpus, err := loadCorpus(*corpusPath)
 	if err != nil {
 		return fail(err)
 	}
 
-	// Resolve model list.
-	var models []string
-	switch {
-	case *llamafilePath != "":
-		// Llamafile exposes a single model; derive its name from the binary.
-		models = []string{harvey.LlamafileModelNameFromPath(*llamafilePath)}
-
-	case *llamacppURL != "":
-		if *modelsFlag != "" {
-			for _, m := range strings.Split(*modelsFlag, ",") {
-				if m = strings.TrimSpace(m); m != "" {
-					models = append(models, m)
-				}
-			}
-		} else {
-			models, err = listOpenAIModels(*llamacppURL)
-			if err != nil {
-				return fail(fmt.Errorf("could not list llama.cpp models: %w\n"+
-					"Use --models NAME to specify the model explicitly.", err))
-			}
-		}
-
-	case *modelsFlag != "":
-		for _, m := range strings.Split(*modelsFlag, ",") {
-			if m = strings.TrimSpace(m); m != "" {
-				models = append(models, m)
-			}
-		}
-
-	default:
-		models, err = listOllamaModels(llmURL)
-		if err != nil {
-			return fail(fmt.Errorf("could not list Ollama models: %w", err))
-		}
+	targets, err := resolveTargets(*modelsFlag, *ollamaURL, *hailoURL, errOut)
+	if err != nil {
+		return fail(err)
 	}
-	if len(models) == 0 {
-		return fail(harvey.Negativef("no models to run (use --models or start Ollama)"))
+	if len(targets) == 0 {
+		return fail(harvey.Negativef("no models to run (use --models or start Ollama or hailo-ollama)"))
 	}
 
-	// Filter prompts by category.
+	// Filter prompts by category: one name or several separated by commas. A
+	// name the corpus does not have is reported even when others match, so a
+	// typo does not quietly run less than was asked.
 	var prompts []Prompt
+	wanted := map[string]bool{}
+	for _, name := range strings.Split(*category, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			wanted[name] = true
+		}
+	}
+	have := map[string]bool{}
+	for _, c := range corpusCategories(corpus) {
+		have[c] = true
+	}
+	var missing []string
+	for name := range wanted {
+		if !have[name] {
+			missing = append(missing, name)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		return fail(harvey.Negativef("no prompts match category %s (the corpus has: %s)", strings.Join(missing, ", "), strings.Join(corpusCategories(corpus), ", ")))
+	}
 	for _, p := range corpus.Prompts {
-		if *category == "" || p.Category == *category {
+		if len(wanted) == 0 || wanted[p.Category] {
 			prompts = append(prompts, p)
-		}
-	}
-	if len(prompts) == 0 {
-		return fail(harvey.Negativef("no prompts match category %q", *category))
-	}
-
-	// Open RAG store when requested.
-	var ragStore *harvey.RagStore
-	var ragEmbedder harvey.Embedder
-	if *ragDB != "" {
-		ragStore, err = harvey.NewRagStore(*ragDB, *ragEmbedModel)
-		if err != nil {
-			e := fmt.Errorf("open RAG store: %w", err)
-			if _, ok := harvey.ExitClassOf(e); !ok {
-				e = harvey.ClassedAs(harvey.ClassData, e) // e.g. a store bound to another embedding model
-			}
-			return fail(e)
-		}
-		ragEmbedder = harvey.NewOllamaEmbedder(*ollamaURL, *ragEmbedModel)
-		fmt.Fprintf(out, "RAG store: %s (embed: %s, top-k: %d)\n", *ragDB, *ragEmbedModel, *ragTopK)
-		if *ragCompare {
-			fmt.Fprintln(out, "Compare mode: each prompt runs twice (base + RAG)")
 		}
 	}
 
@@ -1085,37 +1066,25 @@ func mainRun(args []string, out, errOut io.Writer) int {
 
 	ar := AssayResults{
 		RunAt:         time.Now(),
-		Backend:       backend,
-		LlamafilePath: *llamafilePath,
+		Backend:       "Ollama",
 		OllamaURL:     *ollamaURL,
-		BackendURL:    backendURL,
-		RagDB:         *ragDB,
-		RagEmbedModel: *ragEmbedModel,
-		RagCompare:    *ragCompare,
+		HailoURL:      *hailoURL,
 		GuideFile:     *guideFile,
 		GuideCompare:  *guideCompare,
 	}
 
-	// Determine which variants to run per prompt.
-	// In compare mode: ["base", "rag"] or ["base", "guide"]. RAG-only:
-	// ["rag"]. Base-only: [""]. --guide-compare and --rag-compare are
-	// mutually exclusive (validated above), so useRAG/useGuide never both
-	// need to be true for the same variant.
+	// Determine which variants to run per prompt: base and guide in compare
+	// mode, otherwise one unnamed run.
 	type variant struct {
 		name     string
-		useRAG   bool
 		useGuide bool
 	}
 	var variants []variant
 	switch {
-	case *ragCompare:
-		variants = []variant{{"base", false, false}, {"rag", true, false}}
 	case *guideCompare:
-		variants = []variant{{"base", false, false}, {"guide", false, true}}
-	case *ragDB != "":
-		variants = []variant{{"rag", true, false}}
+		variants = []variant{{"base", false}, {"guide", true}}
 	default:
-		variants = []variant{{"", false, false}}
+		variants = []variant{{"", false}}
 	}
 
 	// Load the guide file's content once, when configured.
@@ -1128,12 +1097,20 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		guideText = strings.TrimSpace(string(data))
 	}
 
-	total := len(models) * len(prompts) * len(variants)
+	total := len(targets) * len(prompts) * len(variants) * *f.runs
 	done := 0
 
-	for _, model := range models {
-		// Create one LLMClient per model; the client is stateless so this is cheap.
-		client := newAssayClient(llmURL, model)
+	for _, tg := range targets {
+		model := tg.Label()
+		// Create one LLMClient per target; the client is stateless so this is cheap.
+		client := newTargetClient(tg, callTimeout)
+		if *f.warmup {
+			w := runWarmup(context.Background(), client, tg)
+			ar.Warmups = append(ar.Warmups, w)
+			if w.Error != "" {
+				fmt.Fprintf(errOut, "assay: warm-up of %s failed: %s\n", model, w.Error)
+			}
+		}
 
 		// Per-model extracted code directory.
 		extractedDir := filepath.Join(outDir, "extracted", sanitizeModelName(model))
@@ -1145,31 +1122,45 @@ func mainRun(args []string, out, errOut io.Writer) int {
 
 		for _, p := range prompts {
 			for _, v := range variants {
+			for run := 1; run <= *f.runs; run++ {
 				done++
 				variantLabel := ""
 				if v.name != "" {
 					variantLabel = "[" + v.name + "] "
 				}
+				if *f.runs > 1 {
+					variantLabel += fmt.Sprintf("(run %d/%d) ", run, *f.runs)
+				}
 				fmt.Fprintf(out, "[%d/%d] %s%s · %s ... ", done, total, variantLabel, model, p.ID)
 
-				// Build prompt text, injecting RAG context when requested.
-				promptText := p.PromptText
-				ragChunks := 0
-				if v.useRAG && ragStore != nil {
-					ctx, n := buildRAGContext(ragStore, ragEmbedder, promptText, *ragTopK)
-					if n > 0 {
-						promptText = ctx + promptText
-						ragChunks = n
-					}
-				}
+				promptText := buildProbePrompt(p)
 
 				messages := buildGuideMessages(guideText, promptText, v.useGuide)
 
 				start := time.Now()
-				var buf strings.Builder
-				stats, callErr := client.Chat(context.Background(), messages, &buf)
-				response := buf.String()
+				rec := &firstWriteRecorder{}
+				var stats harvey.ChatStats
+				var calls []harvey.ToolCall
+				var callErr error
+				if p.Checks.wantsTools() {
+					stats, calls, callErr = client.ChatWithTools(context.Background(), messages, harvey.ProfileToolSet(), rec)
+				} else {
+					stats, callErr = client.Chat(context.Background(), messages, rec)
+				}
+				unsupported := p.Checks.wantsTools() && toolsUnsupported(callErr)
+				if unsupported {
+					callErr = nil // a model that takes no tools is a result, not a failed call
+				}
+				var windowErr error
+				if p.Checks.UsesTail != "" && callErr != nil && windowFailure(callErr) {
+					windowErr, callErr = callErr, nil // an oversized prompt the server cannot take is the probe's result
+				}
+				response := rec.buf.String()
 				elapsed := time.Since(start)
+				var firstToken time.Duration
+				if !rec.first.IsZero() {
+					firstToken = rec.first.Sub(start)
+				}
 
 				if callErr != nil {
 					fmt.Fprintf(out, "ERROR: %v\n", callErr)
@@ -1178,7 +1169,9 @@ func mainRun(args []string, out, errOut io.Writer) int {
 					ar.Results = append(ar.Results, PromptResult{
 						PromptID: p.ID,
 						Category: p.Category,
-						Model:    model,
+						Model:    tg.Model,
+						Service:  tg.Service,
+						PromptSizeEst: p.Tokens,
 						Variant:  v.name,
 						Response: "ERROR: " + callErr.Error(),
 						Elapsed:  elapsed,
@@ -1188,20 +1181,24 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				}
 
 				checks, _ := runChecks(p, response, extractedDir)
+				checks = append(checks, runProbeChecks(p, response, calls, unsupported, windowErr, probeTokens(p, promptText))...)
 
 				pr := PromptResult{
 					PromptID:     p.ID,
 					Category:     p.Category,
-					Model:        model,
+					Model:        tg.Model,
+					Service:      tg.Service,
+					PromptSizeEst: p.Tokens,
 					Variant:      v.name,
 					Response:     response,
 					Elapsed:      elapsed,
 					PromptTokens: stats.PromptTokens,
 					ReplyTokens:  stats.ReplyTokens,
 					TokensPerSec: stats.TokensPerSec,
+					FirstToken:   firstToken,
+					DecodeTokensPerSec: decodeRate(stats.ReplyTokens, elapsed, firstToken),
 					Checks:       checks,
 					AutoPass:     allPassed(checks),
-					RagChunks:    ragChunks,
 				}
 				ar.Results = append(ar.Results, pr)
 
@@ -1209,12 +1206,9 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				if !pr.AutoPass {
 					passLabel = "FAIL"
 				}
-				chunkNote := ""
-				if ragChunks > 0 {
-					chunkNote = fmt.Sprintf(" · %d RAG chunks", ragChunks)
-				}
-				fmt.Fprintf(out, "%s · %s · %.1f tok/s%s\n",
-					passLabel, elapsed.Round(time.Millisecond), stats.TokensPerSec, chunkNote)
+				fmt.Fprintf(out, "%s · %s · %.1f tok/s\n",
+					passLabel, elapsed.Round(time.Millisecond), stats.TokensPerSec)
+			}
 			}
 		}
 
@@ -1228,6 +1222,17 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	}
 	if err := writeJSON(outDir, ar); err != nil {
 		e := writeFailure(fmt.Errorf("write JSON: %w", err))
+		fmt.Fprintf(errOut, "assay: %v\n", e)
+		note(e)
+	}
+
+	matrix := buildMatrix(ar.Results)
+	fmt.Fprintf(out, "\nProfile (pass/trials per capability):\n\n%s", matrixText(matrix, ar.Warmups))
+	if hs := buildHints(ar, matrix); len(hs) > 0 {
+		fmt.Fprintf(out, "\nHints (advice from this run; nothing is changed):\n%s", hintsText(hs))
+	}
+	if err := writeSummary(outDir, buildSummary(ar, matrix, *f.runs, callTimeout)); err != nil {
+		e := writeFailure(fmt.Errorf("write summary: %w", err))
 		fmt.Fprintf(errOut, "assay: %v\n", e)
 		note(e)
 	}

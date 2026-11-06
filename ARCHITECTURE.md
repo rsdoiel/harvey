@@ -2,7 +2,7 @@
 # Harvey Architecture
 
 Harvey is a terminal-based coding agent written in Go. It connects to a local
-[Ollama](https://ollama.com) server (and optionally to cloud providers via named
+[Ollama](https://ollama.com) server (and optionally to other Ollama servers via named
 routes) and provides an interactive REPL for code-focused conversations. The
 design philosophy is: keep the LLM backend swappable, constrain all file I/O
 to a sandboxed workspace, and accumulate context through explicit slash commands
@@ -26,14 +26,14 @@ workspace.go                Sandboxed file I/O (Workspace)
 knowledge.go                SQLite knowledge base (KnowledgeBase)
 audit.go                    In-memory ring-buffer audit log (AuditBuffer)
 permissions.go              Permission check helpers (CheckReadPermission, etc.)
-debuglog.go                 JSONL diagnostic event log (DebugLog); written when --debug
+sessionlog.go              Append-only JSONL session log (SessionLog), scrubber in logscrub.go; --debug adds level-debug events
+sessionlog_agent.go        Agent wiring of the session log (events from Run, dispatch, the client hook, tool loop)
 lear_messages.go            Edward Lear-themed spinner waiting messages
 
 --- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
-anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go for cloud providers
-llamafile.go                llamafile model registration and discovery (reached through /model)
-llamafile_service.go        Llamafile server lifecycle (start, probe, port selection)
+ollama_chat.go              OllamaChatClient — speaks Ollama's /api/chat (streaming, tools, num_ctx)
+chat_types.go               ToolCall, Tool, ContentPart and the other chat types
 model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
 route_persist.go            Persistence helpers for routes.json
@@ -52,7 +52,6 @@ memory_manifest.go          Manifest — tracks which sessions have been mined
 memory_unified.go           UnifiedMemory — unified Recall() across all three silos
 memory_rolling.go           Rolling summary — compresses history when budget exceeded
 memory_scrub.go             Credential scrubbing before memory review cards
-memory_onboarding.go        Workspace-profile onboarding on first run
 memory_enrichment_*.go      Design/plan documents (not compiled)
 
 --- Skills ---
@@ -72,31 +71,27 @@ recorder.go                 Fountain .spmd session recorder
 sessions_files.go           Session file discovery, listing, MostRecentSession()
 replay.go                   Session replay (re-run user turns against new model)
 
---- RAG ---
-rag_support.go              RagStore, Embedder, chunk ingest/query, FTS5+cosine hybrid
+--- Embeddings ---
+embedding.go                Embedder interface, cosine similarity, vector (de)serialisation for memory
 
 --- Scholarly support ---
 scholarly_identifiers.go    14-type identifier extraction (DOI, ORCID, ROR, ArXiv, etc.)
-scholarly_pdf.go            Section-aware PDF chunking; identifier tagging for RAG
 
 --- Language support ---
 language_detector.go        Language detection from filename and content
 language_registry.go        Language registry (extension → language mapping)
-code_chunkers.go            Symbol-aware chunking for 13+ languages
 code_formatters.go          Auto-formatters (gofmt, clang-format, prettier, black, etc.)
-doc_extractors.go           Comment/docstring extraction and symbol association
 syntax_highlighters.go      ANSI syntax highlighting for code blocks in LLM replies
 
 --- Remote I/O ---
 remote.go                   RemoteReader interface, URI-scheme factory
 remote_http.go              HTTP/HTTPS backend with body limit and timeout
-remote_s3.go                S3-compatible backend (AWS S3, MinIO, Cloudflare R2)
 remote_sftp.go              SFTP/SCP backend with strict host-key verification
 
 --- Utilities ---
 pdf_extract.go              PDF text extraction via poppler (pdfinfo, pdftotext)
 codeblock.go                Fenced code block parser
-templates.go                Workspace profile templates
+templates.go                Embedded help guides
 spinner.go                  Animated spinner: braille frames, Lear messages, live timer,
                               StatusCh for tool-call status updates
 ```
@@ -109,27 +104,25 @@ spinner.go                  Animated spinner: braille frames, Lear messages, liv
 
 | Field | Type | Purpose |
 |---|---|---|
-| `Client` | `LLMClient` | Current backend (Ollama, Llamafile, cloud provider) |
+| `Client` | `LLMClient` | Current backend (Ollama, hailo-ollama) |
 | `Config` | `*Config` | Runtime configuration |
 | `History` | `[]Message` | Full conversation sent to the LLM on every turn |
 | `Workspace` | `*Workspace` | Sandboxed root for all file operations |
 | `KB` | `*KnowledgeBase` | SQLite knowledge base (`agents/knowledge.db`) |
 | `ModelCache` | `*ModelCache` | Capability cache for installed Ollama models |
-| `Rag` | `*RagStore` | Active RAG chunk store; nil when not configured |
 | `RagOn` | `bool` | When true, top-K chunks are prepended before each Chat call |
 | `SessionsDir` | `string` | Absolute path to the sessions directory |
 | `Skills` | `SkillCatalog` | Skills discovered at startup |
 | `Recorder` | `*Recorder` | Optional Fountain .spmd session log |
 | `In` | `io.Reader` | Interactive prompt source (default `os.Stdin`; injectable for tests) |
-| `PinnedContext` | `string` | Text that survives `/clear`; re-injected after system prompt |
+| `Pins` | `[]Pin` | Kept in front of the model for the session; re-injected after `/clear` |
 | `Routes` | `*RouteRegistry` | Registered remote endpoints; nil when routing not configured |
 | `ActiveSkill` | `string` | Most recently loaded skill name; `""` when none |
 | `ActiveSkillSet` | `string` | Currently loaded skill-set bundle name; `""` when none |
 | `Tools` | `*ToolRegistry` | Schema-based tool registry; nil when tools disabled |
 | `AuditBuffer` | `*AuditBuffer` | In-memory audit log ring buffer |
-| `DebugLog` | `*DebugLog` | JSONL diagnostic log; nil when `--debug` not set |
+| `SessionLog` | `*SessionLog` | Append-only JSONL record of this session (DR-0036); nil when none is open |
 | `OllamaStartedByHarvey` | `bool` | True when Harvey launched the Ollama subprocess |
-| `llamafileProc` | `*os.Process` | Non-nil when Harvey started the current llamafile server |
 | `sessionTurns` | `int` | Total completed user turns (used to trigger auto-mine) |
 | `sessionInjectedTokens` | `int` | Tokens injected via UnifiedMemory this session |
 | `sessionCompressed` | `bool` | True if rolling summary fired at least once this session |
@@ -178,8 +171,8 @@ keeping the last N turns verbatim.
 time. Every subsequent operation calls `AbsPath(rel)`, which joins `rel` under
 `Root` and then checks that the result still has `Root` as a prefix — rejecting
 `../` escapes and absolute paths outside the root. The `agents/` subdirectory
-is created automatically and holds `knowledge.db`, `memories/`, `sessions/`, and
-`rag/*.db`.
+is created automatically and holds `knowledge.db`, `memories/` and `sessions/`.
+Older `rag/*.db` stores are no longer read.
 
 All file I/O in command handlers goes through `ws.ReadFile`, `ws.WriteFile`,
 `ws.ListDir`, or `ws.MkdirAll`; direct `os.*` calls are not used for workspace
@@ -192,7 +185,7 @@ paths.
 ```
 startup
   └─ system message  ← HARVEY.md (after ExpandDynamicSections)
-  └─ user message    ← [pinned context] if PinnedContext != ""
+  └─ user message    ← [pinned context] messages, one per pin
   └─ user message    ← [memory context] from UnifiedMemory.Recall()
 
 each turn
@@ -214,32 +207,12 @@ each turn
   └─ AddMessage("user", "[Conversation summary]\n\n"+summary)
 ```
 
-### Pinned context (`PinnedContext`)
+### Pins
 
-`PinnedContext` is a free-form string managed by `/context add|show|clear`.
-`add` appends (newline-separated); there is always at most one `[pinned context]`
-message in `History` — subsequent `add` calls update it in-place. `ClearHistory`
-re-injects it automatically, so it survives `/summarize`.
-
-### Dynamic system prompt (`ExpandDynamicSections`)
-
-`LoadHarveyMD` reads `HARVEY.md` from the process working directory.
-`ExpandDynamicSections` is called before the system message is injected,
-replacing these markers with live data:
-
-| Marker | Replaced with |
-|---|---|
-| `<!-- @date -->` | Current date (`YYYY-MM-DD`) |
-| `<!-- @files -->` | Workspace file tree (hidden dirs excluded) |
-| `<!-- @git-status -->` | `git status --short`, or `(not a git repository)` |
-
-## Slash-command system (`commands.go`)
-
-Commands are registered in `registerCommands()` as `map[string]*Command`.
-Each `Command` has a `Handler func(a *Agent, args []string, out io.Writer) error`.
-The REPL calls `dispatch(input, out)` for any line beginning with `/`.
-
-### Workspace commands
+A pin (`sessionpins.go`) is a `Pin` in `Agent.Pins`, a `pin` event in the session log and a `[pinned context]` message in the history.
+`/pin` takes text, a session event id or a `kb:` identity; the pins may take a quarter of the prompt limit. The assembler keeps pins
+ahead of the dialog (system prompt, pins, summaries, recalled knowledge, tail). `ClearHistory` adds each pin's message again, so
+pins survive `/clear` and `/summarize`. `/unpin` removes the message (a logged rewrite) and writes an `unpin` event.
 
 | Command | Purpose |
 |---|---|
@@ -259,7 +232,7 @@ The REPL calls `dispatch(input, out)` for any line beginning with `/`.
 
 | Command | Purpose |
 |---|---|
-| `/model list\|use\|show\|status\|stop\|clean\|mode\|alias` | Manage models across llamafile, llama.cpp and Ollama |
+| `/model list\|use\|show\|status\|stop\|clean\|mode\|alias` | Manage models across Ollama and hailo-ollama |
 | `/inspect [MODEL]` | Show detailed model capability information |
 | `/route add\|rm\|models\|probe\|set\|list\|on\|off\|status` | Manage named remote endpoints |
 
@@ -267,17 +240,17 @@ The REPL calls `dispatch(input, out)` for any line beginning with `/`.
 
 | Command | Purpose |
 |---|---|
-| `/context add TEXT...\|show\|clear` | Manage pinned context that survives `/clear` |
-| `/clear` | Reset conversation history (system prompt + pinned context survive) |
+| `/pin ...`, `/pins`, `/unpin N` | Keep something in front of the model for the session; list; remove |
+| `/context` | Show what the model sees on the next turn |
+| `/clear` | Reset conversation history (system prompt + pins survive) |
 | `/summarize` | Condense history to a summary; `/compact` is an alias |
 | `/status` | Show backend, token usage, routing, recording, memory, debug state |
-| `/hint` | Actionable suggestions (unmined sessions, empty RAG, empty KB) |
+| `/hint` | Actionable suggestions (unmined sessions, empty KB) |
 
 ### Session commands
 
 | Command | Purpose |
 |---|---|
-| `/record start [FILE]\|stop\|status` | Start or stop Fountain session recording |
 | `/rename NAME` | Rename the active session file without interrupting recording |
 | `/session continue FILE\|replay FILE [OUTPUT]` | Load or replay a prior session |
 
@@ -285,8 +258,7 @@ The REPL calls `dispatch(input, out)` for any line beginning with `/`.
 
 | Command | Purpose |
 |---|---|
-| `/kb status\|search\|inject\|project\|observe\|concept` | Query and update SQLite knowledge base |
-| `/rag list\|new\|use\|drop\|ingest\|status\|query\|on\|off` | Manage RAG stores |
+| `/kb VERB ...` | Run the installed `kb`; `inject`, `learn` and `project use` are harvey's own |
 | `/memory mine\|list\|show\|flag\|forget\|status\|recall\|profile` | Manage session-experience memory store |
 | `/recall QUERY` | Search all knowledge silos (alias for `/memory recall`) |
 
@@ -345,8 +317,7 @@ are forwarded. The following variables are unconditionally stripped:
 - LLM provider API keys: `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `DEEPSEEK_API_KEY`,
   `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`,
   `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`
-- S3-compatible credentials: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-  `AWS_SESSION_TOKEN`, `AWS_SECURITY_TOKEN`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`
+- Cloud-storage credentials (`AWS_*`, `MINIO_*`) stay filtered as a precaution
 - SFTP/SCP credentials: `SFTP_PASSWORD`, `SFTP_KEY_PATH`
 - HTTP authentication: `HTTP_BEARER_TOKEN`, `HTTP_BASIC_PASSWORD`
 
@@ -382,7 +353,6 @@ by `UnifiedMemory.Recall()` (`memory_unified.go`):
 
 | Silo | Files | Content | Injection point |
 |---|---|---|---|
-| **RAG store** | `rag_support.go`, `agents/rag/*.db` | Vector-embedded document chunks | Per-prompt via `ragAugment()` when RAG is on |
 | **Memory store** | `memory_store.go`, `memory_miner.go`, `memory_manifest.go`, `agents/memories/` | Typed experience records extracted from sessions | Session start via `UnifiedMemory.Recall()` |
 | **Knowledge base** | `knowledge.go`, `agents/knowledge.db` | Hand-authored experiments/observations/concepts (relational) | Optional; also via `UnifiedMemory` |
 
@@ -414,8 +384,7 @@ Auto-mine triggers on session exit when `sessionTurns >= 10`.
 
 1. `workspace_profile` + `project_fact` memories — always injected first (score 1.0)
 2. Experiential memories (FTS5 full-text + cosine × confidence) — ranked by final score
-3. RAG chunks — relevance-ranked, discarded below `ragMinScore` (0.3)
-4. KB observations — optional
+3. KB observations — optional
 
 Token budget is enforced via `memory.budget_pct` in harvey.yaml (default 0.25 of
 the model context window). Setting `memory.inject_on_start: false` disables injection.
@@ -559,28 +528,17 @@ Posts to `/api/chat` with `stream: true`. The final chunk with `done: true`
 carries eval counts and durations (nanoseconds). `TokensPerSec` is computed as
 `eval_count / (eval_duration / 1e9)`.
 
-### AnyLLMClient (`anyllm_client.go`)
+### OllamaChatClient (`ollama_chat.go`)
 
-Wraps [mozilla-ai/any-llm-go](https://github.com/mozilla-ai/any-llm-go) for
-cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI). Local providers
-with `Config.OllamaTimeout == 0` use `anyllm.WithHTTPClient(&http.Client{})`
-to remove the library's default 120 s timeout.
+Speaks Ollama's `/api/chat` itself (workspace DR-0046); there is no model
+library between harvey and the server. The request is streamed newline-delimited
+JSON. Harvey sets `options.num_ctx` to the window it believes
+(`effectiveContextLimit()`) and sends none when the window is unknown. A tool
+result goes out with role `tool` and the tool's name. A hailo-ollama client
+never sends a `tools` key. `Config.OllamaTimeout == 0` means no HTTP timeout.
 
 Named remote endpoints are managed by `RouteRegistry` (`routing.go`). The
 `@name` prefix in a prompt dispatches that turn to the named endpoint.
-
-### Llamafile backend (`llamafile.go`, `llamafile_service.go`)
-
-Llamafile binaries are registered via `/model use` and stored in
-`Config.LlamafileModels`. `llamafile_service.go` handles the server lifecycle:
-`FindFreePort` selects an available TCP port, `StartLlamafileServer` launches the
-binary via `/bin/sh` (required on macOS for APE format binaries), and probes the
-health endpoint before returning. Key config fields:
-
-| Field | Default | Purpose |
-|---|---|---|
-| `startup_timeout` | 120s | Fast-fail if server does not become ready |
-| `gpu_layers` | 99 | `-ngl` flag for Metal/CUDA layer offload |
 
 ### Backend selection at startup (`terminal.go`)
 
@@ -590,43 +548,12 @@ health endpoint before returning. Key config fields:
 4. If nothing selected: Harvey starts without a backend; commands that need one
    print a prompt to connect first.
 
-## RAG — Retrieval-Augmented Generation (`rag_support.go`)
+## Embeddings (`embedding.go`)
 
-| Type | Purpose |
-|---|---|
-| `Embedder` | Interface: `Embed(text) ([]float64, error)` + `Name() string` |
-| `RagStore` | SQLite-backed chunk store; enforces single-embedder consistency |
-| `Chunk` | Retrieved result: ID, Content, Score, Source |
-| `RagStoreEntry` | Registry entry: Name, DBPath, EmbeddingModel, ModelMap |
-
-**Embedding model binding.** Each `RagStore` is bound to one embedding model at
-creation. `Ingest` and `Query` both reject an `Embedder` whose `Name()` differs
-from the stored model.
-
-**Hybrid retrieval.** `RagStore.Query` uses FTS5 full-text search as a fast
-lexical pass, then re-ranks results using cosine similarity. Chunks below
-`ragMinScore` (0.3) are discarded. The same threshold is used in `terminal.go`
-and `cmd/assay/main.go` — keep them in sync if changed.
-
-**Retrieval flow.** `Agent.ragAugment(prompt)` is called before every `Chat`
-invocation when `RagOn` is true. It embeds the prompt, queries the active store
-for the top 5 chunks, discards any below the threshold, and prepends a
-`### Context (from knowledge base)` block. Silent no-op if the store is empty or
-nothing exceeds threshold.
-
-**Database layout.** One table per store:
-
-```sql
-CREATE TABLE chunks (
-    id        INTEGER PRIMARY KEY,
-    content   TEXT    NOT NULL,
-    embedding BLOB    NOT NULL,
-    source    TEXT    NOT NULL DEFAULT ''
-);
-```
-
-Embeddings are stored as `[int32 length][float64...]` in little-endian byte order.
-Cosine similarity is computed in Go at query time.
+`/rag` and its stores were removed (workspace DR-0035): there are no named RAG stores and no per-prompt retrieval. `embedding.go`
+keeps the `Embedder` interface, cosine similarity and vector serialisation that the memory system uses; nothing supplies an
+embedder now, so memory recall is by keyword (DR-0037 replaces the memory store). Retrieval over documents is the knowledge
+base: `kb document ingest`, then `/kb search`.
 
 ## Spinner (`spinner.go`)
 
@@ -657,12 +584,9 @@ Tests live alongside source files. Current test files:
 | `commands_test.go` | Core slash-command handlers |
 | `tier2_test.go` | Helpers (`isBinary`, `looksLikePath`), `/search`, `/git` |
 | `tier3_test.go` | Mock client, `/summarize`, `/context`, `ExpandDynamicSections` |
-| `rag_support_test.go` | `RagStore` ingest, query, source round-trip, semantic ranking |
-| `anyllm_client_test.go` | AnyLLMClient construction and routing |
+| `ollama_chat_test.go` | OllamaChatClient: streaming, tool calls, errors, num_ctx, images |
 | `codeblock_test.go` | Fenced code block parser |
-| `code_chunkers_test.go` | Symbol-aware chunking for multiple languages |
 | `code_formatters_test.go` | Auto-formatter detection and dispatch |
-| `doc_extractors_test.go` | Comment/docstring extraction |
 | `language_detector_test.go` | Language detection from filename and content |
 | `language_registry_test.go` | Extension → language mapping |
 | `syntax_highlighters_test.go` | ANSI highlighting output |
@@ -670,10 +594,7 @@ Tests live alongside source files. Current test files:
 | `memory_miner_test.go` | Miner extraction and scrub |
 | `memory_rolling_test.go` | Rolling summary trigger and compression |
 | `memory_unified_test.go` | UnifiedMemory.Recall() priority ordering |
-| `memory_onboarding_test.go` | Workspace-profile onboarding flow |
 | `memory_test.go` | Integration across memory subsystems |
-| `llamafile_test.go` | Llamafile command parsing and model name derivation |
-| `llamafile_service_test.go` | Port selection, server start/stop lifecycle |
 | `tools_test.go` | Tool schema definitions and registry construction |
 | `tool_executor_test.go` | RunToolLoop multi-turn execution, compaction |
 | `skill_dispatch_test.go` | Trigger matching |
@@ -690,18 +611,15 @@ Tests live alongside source files. Current test files:
 | `remote_test.go` | RemoteReader scheme selection |
 | `remote_sftp_test.go` | SFTP packet size limits and string length caps |
 | `scholarly_identifiers_test.go` | 14-type identifier extraction and normalization |
-| `scholarly_pdf_test.go` | Section-aware PDF chunking |
 | `pdf_extract_test.go` | Poppler-based text extraction |
 | `ollama_probe_test.go` | Ollama server health probing |
 | `agent_integration_test.go` | Full agent lifecycle integration tests |
-| `profile_use_test.go` | Profile template loading and `/profile use` flow |
 | `phase_d_test.go` | Phase D feature integration tests |
 | `phase_e_test.go` | Phase E feature integration tests |
 | `ui_test.go` | Terminal line editor and completion |
 | `terminal_test.go` | REPL startup sequence and backend selection |
 | `model_cache_test.go` | ModelCache capability lookup and expiry |
-| `encoderfile_embedder_test.go` | Embedder interface and embedding consistency |
-| `templates_test.go` | Workspace profile template rendering |
+| `templates_test.go` | Embedded help guides |
 
 The `mockLLMClient` in `tier3_test.go` is the canonical test double for
 `LLMClient` — reuse it rather than creating new ones.
@@ -711,13 +629,13 @@ The `mockLLMClient` in `tier3_test.go` is the canonical test double for
 Harvey is in active development. All major architectural components described
 in this document are fully implemented as of v0.0.13:
 
-- ✓ Three-silo memory (RAG, experience store, knowledge base)
+- ✓ Two-silo memory (experience store, knowledge base)
 - ✓ Tool registry and dual execution paths (structured + prose)
-- ✓ Multi-backend routing (Ollama, Llamafile, cloud providers)
+- ✓ Routing to other Ollama servers
 - ✓ Skills system (SKILL.md loaded directly)
 - ✓ Pipelines, plan execution, and loop automation
 - ✓ Scholarly identifier support (14 types) and scholarly PDF chunking
-- ✓ Remote I/O (S3, HTTP/S, SFTP/SCP)
+- ✓ Remote I/O (HTTP/S, SFTP/SCP)
 - ✓ Security system (safe mode, permissions, audit log, env filtering)
 
 See `TODO.md` for current open items and `CHANGES.md` for the release history.

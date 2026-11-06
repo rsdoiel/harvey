@@ -20,7 +20,7 @@ func HelpTopicsText() string {
   attach          Attach a file (image, PDF, or text) to the next turn
   builtin-tools   Built-in tools the LLM can invoke (read, write, run, search…)
   clear           Clear conversation history
-  context         Conversation context and token budget management
+  context         Show what the model sees on the next turn
   editing         Keyboard shortcuts and line-editing keybindings
   file-tree       Display the workspace directory tree
   files           List files in the workspace or a subdirectory
@@ -28,7 +28,7 @@ func HelpTopicsText() string {
   getting-started Installation walkthrough and first session guide
   git             Read-only git commands injected into context
   hint            Inject a one-off hint into the LLM context
-  inspect         Inspect RAG stores, memory records, and model details
+  inspect         Inspect memory records and model details
   kb              Knowledge base — experiments, observations, and concepts
   learn           Overview of Harvey's three-silo memory architecture
   model           Unified model management across all backends (list, use, show, status, stop, clean)
@@ -37,12 +37,11 @@ func HelpTopicsText() string {
   memory          Experience memory — mine, list, show, flag, forget
   pdf-tools       PDF extraction tools (requires poppler)
   pipeline        Multi-step pipelines chaining prompts and commands
+  pin             Keep something in front of the model for this session
   plan            Create and track multi-step work plans
-  rag             Retrieval-augmented generation with named knowledge stores
   read            Read workspace files into conversation context
   read-dir        Read a directory tree into conversation context
   read-pdf        Extract and inject PDF text (requires poppler)
-  record          Session recording in Fountain screenplay format
   rename          Rename a file in the workspace
   routing         Route prompts to remote model endpoints via @mention
   run             Run a shell command and inject its output into context
@@ -60,8 +59,8 @@ func HelpTopicsText() string {
            compact → summarize    edit, keys → editing
            filetree → file-tree   install, setup → getting-started
            knowledge → kb         pdf, pdftools → pdf-tools
-           profile, recall → memory   readdir → read-dir
-           recording → record     route → routing
+           recall → memory            readdir → read-dir
+           route → routing        pins, unpin → pin
            skill → skills         tools, builtins → builtin-tools
 
 `
@@ -83,7 +82,7 @@ func HelpTopicsText() string {
  *   bool — true if the topic was recognized, false if unknown.
  *
  * Example:
- *   ok := PrintHelpTopic(os.Stdout, "rag", "harvey", Version, ReleaseDate, ReleaseHash)
+ *   ok := PrintHelpTopic(os.Stdout, "kb", "harvey", Version, ReleaseDate, ReleaseHash)
  *   if !ok {
  *       fmt.Fprintln(os.Stderr, "unknown topic")
  *   }
@@ -103,6 +102,8 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(SummarizeHelpText)
 	case "context":
 		f(ContextHelpText)
+	case "pin", "pins", "unpin":
+		f(PinHelpText)
 	case "editing", "edit", "keybindings", "keys":
 		f(EditingHelpText)
 	case "file-tree", "filetree":
@@ -125,7 +126,7 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(LearnHelpText)
 	case "loop":
 		f(LoopHelpText)
-	case "memory", "profile", "recall":
+	case "memory", "recall":
 		f(MemoryHelpText)
 	case "model":
 		f(ModelHelpText)
@@ -137,16 +138,12 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(PipelineHelpText)
 	case "plan":
 		f(PlanHelpText)
-	case "rag":
-		f(RagHelpText)
 	case "read":
 		f(ReadHelpText)
 	case "read-dir", "readdir":
 		f(ReadDirHelpText)
 	case "read-pdf", "readpdf":
 		f(ReadPDFHelpText)
-	case "record", "recording":
-		f(RecordHelpText)
 	case "rename":
 		f(RenameHelpText)
 	case "routing", "route", "router":

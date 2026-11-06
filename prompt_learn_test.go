@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	anyllmerrors "github.com/mozilla-ai/any-llm-go/errors"
 )
 
 // Layer 3 of the prompt budget: learn a model's limit from a failure. When a
@@ -27,10 +25,10 @@ func TestIsPromptTooLargeFailure(t *testing.T) {
 		want bool
 	}{
 		{"truncated stream", fmt.Errorf("x: %w", ErrStreamTruncated), true},
-		{"context length", anyllmerrors.NewContextLengthError("ollama", errors.New("context")), true},
-		{"provider 500", anyllmerrors.NewProviderError("ollama", errors.New("500 Internal Server Error")), true},
-		{"server not running", anyllmerrors.NewProviderError("ollama", errors.New("ollama server not running: connection refused")), false},
-		{"model not found", anyllmerrors.NewModelNotFoundError("ollama", errors.New("404")), false},
+		{"context length", &ChatStatusError{Status: 400, Message: "input exceeds the context length"}, true},
+		{"provider 500", &ChatStatusError{Status: 500, Message: "read failed!"}, true},
+		{"server not running", errors.New("dial tcp: connect: connection refused"), false},
+		{"model not found", &ChatStatusError{Status: 404, Message: "model not found"}, false},
 		{"cancelled", context.Canceled, false},
 		{"plain", errors.New("boom"), false},
 		{"nil", nil, false},

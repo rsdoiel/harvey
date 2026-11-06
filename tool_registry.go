@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 /** ToolRegistry manages all available schema-based tools. It is safe for
@@ -55,9 +53,9 @@ func (r *ToolRegistry) RegisterTool(name, description string, parameters map[str
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tools[name] = toolEntry{
-		schema: anyllm.Tool{
+		schema: Tool{
 			Type: "function",
-			Function: anyllm.Function{
+			Function: Function{
 				Name:        name,
 				Description: description,
 				Parameters:  parameters,
@@ -73,30 +71,30 @@ func (r *ToolRegistry) RegisterTool(name, description string, parameters map[str
  *   name (string) — the tool name.
  *
  * Returns:
- *   anyllm.Tool  — the JSON Schema definition.
+ *   Tool  — the JSON Schema definition.
  *   ToolHandler  — the executor function.
  *   bool         — false if the name is not registered.
  *
  * Example:
  *   schema, handler, ok := r.GetTool("read_file")
  */
-func (r *ToolRegistry) GetTool(name string) (anyllm.Tool, ToolHandler, bool) {
+func (r *ToolRegistry) GetTool(name string) (Tool, ToolHandler, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	e, ok := r.tools[name]
 	return e.schema, e.handler, ok
 }
 
-/** GetToolSchemas returns all registered anyllm.Tool schemas in alphabetical
+/** GetToolSchemas returns all registered Tool schemas in alphabetical
  * order, ready to pass in CompletionParams.Tools.
  *
  * Returns:
- *   []anyllm.Tool — tool schema slice.
+ *   []Tool — tool schema slice.
  *
  * Example:
  *   params.Tools = r.GetToolSchemas()
  */
-func (r *ToolRegistry) GetToolSchemas() []anyllm.Tool {
+func (r *ToolRegistry) GetToolSchemas() []Tool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	names := make([]string, 0, len(r.tools))
@@ -104,7 +102,7 @@ func (r *ToolRegistry) GetToolSchemas() []anyllm.Tool {
 		names = append(names, n)
 	}
 	sortStrings(names)
-	schemas := make([]anyllm.Tool, len(names))
+	schemas := make([]Tool, len(names))
 	for i, n := range names {
 		schemas[i] = r.tools[n].schema
 	}

@@ -25,7 +25,7 @@ cmt codemeta.json version.go  # regenerate version.go after bumping codemeta.jso
 | `bin/harvey` | `cmd/harvey/main.go` → `harvey.go` | Interactive terminal agent |
 | `bin/assay`  | `cmd/assay/main.go` (standalone) | LLM evaluation harness |
 
-`cmd/assay/main.go` imports the root `harvey` package for `RagStore` and `OllamaEmbedder`. It is otherwise self-contained.
+`cmd/assay/main.go` imports the root `harvey` package for the Ollama client. It is otherwise self-contained.
 
 ## Documentation convention
 
@@ -39,10 +39,11 @@ Every exported Go symbol **must** have a `/** ... */` block comment with a descr
 
 The startup sequence wires state in this order, and order matters:
 
-1. Banner → workspace init → `LoadHarveyYAML` (path overrides) → KB → model cache → RAG store
+1. Banner → workspace init → `LoadHarveyYAML` (path overrides) → KB → model cache
 2. Session picker → system prompt → skills catalog → backend selection → debug log
 3. Session resume / `--continue` / replay
-4. Auto-record → workspace-profile onboarding (once, if empty)
+   (the upgrade notice is written to stderr right after `LoadHarveyYAML`, before the banner's later lines)
+4. Auto-record
 5. REPL loop
 
 The REPL chat path (`histLenBeforeChat` pattern):
@@ -69,41 +70,33 @@ Harvey has two separate execution paths depending on model capability:
 
 `autoExecuteReply` (the tagged-fence block writer) is **skipped** when `!noToolCalls` — this prevents display-only code blocks in tool-call responses from being offered as files to write.
 
-## Three-silo memory architecture
+## Recall: the knowledge base, and the retiring memory store
 
-Harvey has three independent knowledge stores, unified at retrieval time by `UnifiedMemory.Recall()`:
+The knowledge base is where recall is headed. Harvey runs the installed `kb` binary, which must be `kbMinVersion` (`kbversion.go`) or newer; an older or unreadable kb counts as unavailable. `kbrecall.go` runs `kb concept recall` and parses its JSON. Harvey also imports `github.com/rsdoiel/knowledge` (a normal versioned `require`, no `replace`) for document ingest and review.
 
-| Silo | Files | Content | Injection point |
-|---|---|---|---|
-| **RAG store** | `rag_support.go`, `agents/rag/*.db` | Vector-embedded document chunks | Per-prompt via `ragAugment()` when RAG is on |
-| **Memory store** | `memory_store.go`, `memory_miner.go`, `memory_manifest.go`, `agents/memories/` | Typed experience records extracted from sessions | Session start via `UnifiedMemory.Recall()` |
-| **Knowledge base** | `github.com/rsdoiel/knowledge` (external module, a normal versioned `require` in `go.mod`; no `replace`), `agents/knowledge.db` | Hand-authored projects/observations/concepts (relational) | Optional, also via `UnifiedMemory` |
+**The memory store is deprecated (DR-0037) and is being removed.** That covers `memory_store.go`, `memory_miner.go`, `memory_manifest.go`, `memory_unified.go`, `commands_memory.go` and `agents/memories/`. Fix it, but don't extend it or build new features on it. The workspace profiles have already been removed. Until the store goes, `UnifiedMemory.Recall()` (`memory_unified.go`) still fills the token budget in this order:
 
-`UnifiedMemory.Recall()` queries all three silos in priority order: `workspace_profile` + `project_fact` first (always injected, score 1.0), then experiential memories (FTS5 + optional cosine), then RAG chunks, then KB observations. Token budget is enforced.
+1. `project_fact` memories, always first, at score 1.0
+2. Experiential memories (FTS5)
+3. `recallKB`: `kb concept recall`, falling back to a substring scan of the current project's observations
 
-**RAG retrieval flow:** `Agent.ragAugment(prompt)` → embed prompt → cosine-similarity search → discard chunks below `ragMinScore` (0.3) → prepend `### Context (from knowledge base)` block. Silent no-op if store is empty or nothing exceeds threshold.
+When `memory.enabled` is set, a session of 10 or more user turns is still auto-mined on exit (`terminal.go`).
 
-**Memory mining flow:** `Manifest.UnminedSessions()` finds `.spmd` files not yet in the manifest → `Miner.Mine()` sends session text to LLM for JSON extraction → interactive review → `MemoryStore.Save()` writes typed Fountain files. Auto-mines on session exit when `sessionTurns >= 10`.
+## Session recording — the session log
 
-**RagStore embedding consistency:** The store is bound to one embedding model at creation. `Query` and `Ingest` both reject an `Embedder` whose `Name()` differs from the stored model.
+Each session writes an append-only JSONL log, `agents/sessions/<stem>.jsonl` (schema: `notes/session-log-schema-as-built.md`, DR-0038 to DR-0041), with large payloads spilled to `<stem>.blobs/`. The `.spmd` Fountain file beside it holds only the title page during the session; at close `finishSession` renders it from the log (`sessionrender.go`, `sessionfile.go`), and `RecoverSessionFiles` renders any left by a crash at startup. `FOUNTAIN_FORMAT.md` documents the output.
 
-## Session recording — Fountain format
-
-Sessions are recorded as `.spmd` files (Fountain screenplay dialect) in `agents/sessions/`. **Not** plain Markdown. The format is documented in `FOUNTAIN_FORMAT.md`. Key recorder calls:
-
-- `RecordTurnWithStats` — normal chat turn
-- `RecordAgentAction` — file write confirmation (generates `HARVEY` / `RSDOIEL` dialogue + `[[write: path — ok]]` note)
-- `RecordShellCommand` — `!` command execution
-
-When adding features that write files or run commands, call the appropriate recorder method so the session transcript stays accurate.
+- Log an event through the `Agent.log*` helpers (`sessionlog_agent.go`, `sessionlog_permission.go`, `sessionlog_kb.go`); they are safe with no log open. Do not write Fountain from feature code.
+- `--continue`, `/session use`, `--replay` and the session list read the log (`sessionload.go`: `LoadSessionInfo`, `ListSessions`, `ContinueFromSession`); an old `.spmd` with no log falls back to `parseFountainSession` for one release.
+- A feature that writes files or runs commands records the author's answer with `logAuthorsAnswer`; model calls are logged by the client hook (`BeginModelCall`), with `withCallPurpose` saying what a call is for.
+- Rendering changes need the golden files in `testdata/fountain/` regenerated (`UPDATE_GOLDEN=1 go test`).
 
 ## Assay evaluation tool (`cmd/assay/`)
 
 `bin/assay` runs prompts from `agents/assay/corpus.yaml` against Ollama models and writes `testout/assay-<timestamp>/report.md` + `results.json`.
 
 Flags of note:
-- `--rag-db PATH` — opens a RAG store and injects context before each prompt
-- `--rag-compare` — runs each prompt twice (base + RAG) and shows a per-check delta table
+- `--guide-file PATH` and `--guide-compare` — run each prompt twice (base + a guide file as the system message) and show a per-check delta table
 - `--category NAME` — run only one category (e.g. `ts-deno`, `go-crosswalk`)
 
 When adding corpus prompts, follow the narrow-prompt principle: one testable capability per entry, at least one automatable `contains:` check, and 2–4 `human:` review questions targeting the specific failure modes that matter.
@@ -115,6 +108,5 @@ Both binaries use the workspace exit-code convention (workspace DR-0003; the tab
 ## Key invariants to preserve
 
 - `ToolRegistry.Dispatch` returns `fmt.Errorf("unknown tool %q", name)` — `tryExecuteProseToolCalls` detects this via `strings.Contains(r.Content, "unknown tool")`.
-- `ragMinScore = 0.3` is shared between `terminal.go` and `cmd/assay/main.go` — keep them in sync if changed.
 - `suggestPathFromHistory` returns `""` when there are ≠1 path-like tokens in the last user message. The `autoExecuteReply` fallback only calls `promptAction` (the Y/n box, which also reports end of input; a caller that writes files must treat that as quit, never as yes) when a single candidate is found; otherwise it asks the user to type a path.
 - The `mockLLMClient` in `tier3_test.go` is the canonical test double for `LLMClient` — reuse it rather than creating new ones.

@@ -58,39 +58,3 @@ func TestLive_Hailo_ListModels(t *testing.T) {
 	}
 	t.Logf("hailo-ollama lists %d models", len(models))
 }
-
-// llama.cpp's listing flags have moved between releases, so this records what
-// the installed build says next to what Harvey finds in the cache; read the
-// log with -v before relying on --cache-list.
-func TestLive_LlamaCpp_CacheListing(t *testing.T) {
-	cfg := requireModelSystem(t, "llamacpp")
-	models, err := NewLlamaCppBackend(cfg, t.TempDir()).ListModels()
-	if err != nil {
-		t.Fatalf("ListModels: %v", err)
-	}
-	t.Logf("Harvey scans %s and finds %d models", llamaCppModelsDir(cfg), len(models))
-	for _, m := range models {
-		t.Logf("  %s", m.Name)
-	}
-	out, err := exec.Command("llama-server", "--cache-list").CombinedOutput()
-	if err != nil {
-		t.Logf("llama-server --cache-list: %v (this build may not have the flag)", err)
-	}
-	t.Logf("llama-server --cache-list says:\n%s", out)
-}
-
-func TestLive_Llamafile_ModelsDirScan(t *testing.T) {
-	cfg := requireModelSystem(t, "llamafile")
-	models, err := NewLlamafileBackend(cfg, t.TempDir(), t.TempDir()).ListModels()
-	if err != nil {
-		t.Fatalf("ListModels: %v", err)
-	}
-	if len(models) == 0 {
-		t.Fatal("a *.llamafile is in the models dir but ListModels found none")
-	}
-	for _, m := range models {
-		if m.Engine != "llamafile" || m.Path == "" {
-			t.Errorf("%+v: want Engine llamafile and a Path", m)
-		}
-	}
-}

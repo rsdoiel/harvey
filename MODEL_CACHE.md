@@ -75,10 +75,8 @@ harvey> /model use llama3.2:latest
    - Any tool mode set with `/model mode` is carried over; the probe
      itself always reports auto
    - Store results in cache with timestamp; a failed probe changes nothing
-   - `ThoroughProbeModel()` (adds an `/api/embed` request) is wired into
-     `/rag setup`'s embedder auto-pick only (`confirmEmbedder` in
-     `commands_rag.go`), confirming or correcting the keyword guess with one
-     live call before committing to it. Nothing else calls it — a full
+   - `ThoroughProbeModel()` (adds an `/api/embed` request) was wired into
+     `/rag setup`'s embedder auto-pick only (removed with `/rag`, DR-0035). Nothing calls it now — a full
      `setOllamaModel`-wide swap would cost an extra request on every model
      switch for a signal most selections never use
 
@@ -519,7 +517,7 @@ The database is configured with:
 | Database locked | Multiple connections | Harvey uses MaxOpenConns(1) to prevent this |
 | "None" probe level | Entry made by `/model mode` before the model was selected | Select the model with `/model use` |
 | Incorrect tool support | Heuristic detection failed | Use `/model mode structured` or `inject` to override |
-| Incorrect embed support | Keyword detection failed | `/rag setup` confirms live before committing; elsewhere, not fixable from Harvey today |
+| Incorrect embed support | Keyword detection failed | Not fixable from Harvey today |
 | Model ignores tools schema | Small model, no native tool support | Use `/model mode inject` to enable file injection |
 | Tool mode reset unexpectedly | Manual DB edit or schema migration | Re-run `/model mode MODEL MODE` to restore |
 
@@ -575,8 +573,10 @@ Rows are keyed by engine and model, because the same model name on two engines
 is two models (different weights, speed and prompt limits). `modelKey(engine,
 model)` builds the key: Ollama keeps the bare name (`llama3.2:3b`), so rows
 written before the engine was part of the key stay valid; every other engine is
-prefixed (`hailo/llama3.2:3b`, `llamacpp/phi4-Q4_K_M`). llamafile and llama.cpp
-rows written under a bare name are not found and are probed again once.
+prefixed (`hailo/llama3.2:3b`). Rows written before the engine was part of the
+key, under a bare name, are not found and are probed again once. Rows keyed
+`llamacpp/…` or `llamafile/…` belong to the removed backends (DR-0033) and are
+never read.
 
 ### Query Performance
 
@@ -625,6 +625,5 @@ No manual migration needed.
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration file reference
 - [OLLAMA.md](OLLAMA.md) — Ollama integration guide (if exists)
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Technical architecture
-- [RAG_Support_Design.md](RAG_Support_Design.md) — RAG design document with embedding model info
 
 *Documentation generated from model_cache.go and ollama.go source code. Version 1.0.*

@@ -28,19 +28,16 @@ All Harvey commands are organized into logical categories. Each command has its 
 ### Context and Search
 
 - **[harvey-search.7.md](harvey-search.7.md)** — Regex search across workspace files
-- **[harvey-context.7.md](harvey-context.7.md)** — Manage pinned context that survives /clear
+- **[harvey-context.7.md](harvey-context.7.md)** — Show what the model sees on the next turn
+- **[harvey-pin.7.md](harvey-pin.7.md)** — Keep text, an event or a knowledge-base row in front of the model (`/pin`, `/pins`, `/unpin`)
 - **[harvey-git.7.md](harvey-git.7.md)** — Read-only git commands (status, diff, log, show, blame)
 
-### RAG (Retrieval-Augmented Generation)
-
-- **[harvey-rag.7.md](harvey-rag.7.md)** — Manage retrieval-augmented generation stores
 - **[harvey-learn.7.md](harvey-learn.7.md)** — Learn from context and build knowledge
 - **[harvey-inspect.7.md](harvey-inspect.7.md)** — Inspect model capabilities and metadata
 
 ### Session Management
 
 - **[harvey-session.7.md](harvey-session.7.md)** — Session management commands
-- **[harvey-record.7.md](harvey-record.7.md)** — Start, stop, and manage session recordings
 - **[harvey-rename.7.md](harvey-rename.7.md)** — Rename the active session file
 - **[harvey-summarize.7.md](harvey-summarize.7.md)** — Condense conversation history to free context window space
 - **[harvey-clear.7.md](harvey-clear.7.md)** — Reset conversation history
@@ -83,7 +80,7 @@ All Harvey commands are organized into logical categories. Each command has its 
 ### System Status
 
 - **[harvey-status.7.md](harvey-status.7.md)** — Show active backend, token usage, routing, and debug state
-- **[harvey-hint.7.md](harvey-hint.7.md)** — Show actionable suggestions for improving results (RAG, memory, KB)
+- **[harvey-hint.7.md](harvey-hint.7.md)** — Show actionable suggestions for improving results (memory, KB)
 
 ---
 
@@ -131,7 +128,6 @@ See **[harvey.1.md](harvey.1.md#environment)** for complete list:
 
 - **[models.md](models.md)** — Models in use and evaluation status
 - **[model_guide.md](model_guide.md)** — Model selection guide based on capability probing results
-- **[Llamafile_notes.md](Llamafile_notes.md)** — Mozilla AI's single-file runnable models (note: not currently integrated with Harvey)
 
 ### Development
 
@@ -178,27 +174,15 @@ See **[harvey.1.md](harvey.1.md#environment)** for complete list:
 | Start Ollama | `ollama serve` (in a shell) |
 | Check the backend | `/model status` |
 
-### RAG Operations
-
-| Task | Command |
-|------|---------|
-| Create RAG store | `/rag new <name>` |
-| List RAG stores | `/rag list` |
-| Use RAG store | `/rag use <name>` |
-| Ingest files | `/rag ingest <path>` |
-| Enable RAG | `/rag on` |
-| Disable RAG | `/rag off` |
-| Query RAG | `/rag query <text>` |
-
 ### Knowledge Base
 
 | Task | Command |
 |------|---------|
-| Show status | `/kb status` |
+| Show status | `/kb stats` |
 | Search | `/kb search <text>` |
 | List projects | `/kb project list` |
-| Add project | `/kb project add <name> [desc]` |
-| Record observation | `/kb observe <kind> <text>` |
+| Add project | `/kb project add <name> [desc]` (kb's own) |
+| Record observation | `/kb observation add --project <name> <kind> <text>` |
 | List concepts | `/kb concept list` |
 | Add concept | `/kb concept add <name> [desc]` |
 
