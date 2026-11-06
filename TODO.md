@@ -222,8 +222,12 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   The user cgroup on wren delegates only `cpu` and `pids`, so `systemd-run -p MemoryMax=` is not enforced there; use a watchdog.
   **`search_files` fixed 2026-11-06 (uncommitted at the time of writing):** it now reads 512 bytes for the binary test, skips and names text files over
   8 MiB (`maxSearchFileBytes`), and streams the rest; tests in `search_files_memory_test.go` (5, all green, whole suite green). On the real 22 GB
-  workspace the pattern from the crash took 12 s and peaked at 20 MB. **Still open:** the memory-aware window and per-turn accounting above, and the
-  other tools that read whole files (`read_file`, `file_tree`, anything using `os.ReadFile` on a model-supplied path): check them for the same pattern. Only harvey
+  workspace the pattern from the crash took 12 s and peaked at 20 MB. **`read_file` fixed the same day (uncommitted at the time of writing):** it read the whole file and then cut the output
+  (512 MiB allocated for a 256 MiB file); now it sniffs 512 bytes (a binary file gets a one-line message, not garbage), reads at most the output cap plus
+  one byte and says the file's size in the truncation note, and refuses to chunk a file over 64 MiB (`maxChunkFileBytes`) before asking the operator;
+  `read_file_memory_test.go`, 6 new tests; on a real 14.9 GB safetensors file peak memory was 7 MB. `write_file` was checked and is fine (its read is
+  the format check of the file it just wrote, at most 10 MiB). **Still open:** the memory-aware window and per-turn accounting above, and the readers
+  where the operator names the path (`/read` and `file_inject.go`, `commands.go:1919` and `:2350`, `pipeline.go`, `plan.go`): lower risk, not yet checked. Only harvey
   was killed; the machine and Ollama stayed up, so the kernel's choice was right. The memory-aware window (`window.go`, design
   `memory-aware-context-window-design.md`) sizes the model's context from the memory available when the model was selected (60%), but it sees only
   the runner's cache: it cannot see harvey's own growth, and it is read once, not again when the desktop, other programs or a second loaded model
