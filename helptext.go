@@ -3629,7 +3629,8 @@ table above.
 
 # OUTPUT
 
-{app_name} writes two files to the output directory:
+{app_name} writes three files to the output directory, and prints the profile at
+the end of the run:
 
 report.md
 : Markdown report containing a summary table (model x prompts x
@@ -3638,7 +3639,15 @@ report.md
 
 results.json
 : Machine-readable JSON array of all prompt results, including the full
-  model response, individual check outcomes, and timing data.
+  model response, individual check outcomes, and timing data (time to first
+  token and the decode rate after it).
+
+summary.json
+: The profile and the hints for scripts and kb (with the rule table): for each model its cold start and warm
+  median timings, and for each model and capability the trials passed, the
+  trials run, the failed calls, and the median timings. report.md carries the
+  same table under "Profile". A failed call is not a trial; it is counted
+  apart so that a timeout does not read as a model that cannot do the task.
 
 # HINTS
 
