@@ -99,3 +99,42 @@ func TestSearchFiles_LargeTextLikeFileIsNotReadWhole(t *testing.T) {
 			alloc>>20, largeFileBytes>>20, searchAllocLimit>>20)
 	}
 }
+
+// A file the search skips for its size is reported, so the model does not take
+// "no matches" for "not there". Binary files are not reported: a workspace is
+// full of them and the note would drown the result.
+func TestSearchFiles_ReportsLargeFilesItSkipped(t *testing.T) {
+	a, root := makeTestAgent(t)
+	os.WriteFile(filepath.Join(root, "notes.md"), []byte("the memory store is retired\n"), 0o644)
+	head := []byte(strings.Repeat("a line of text\n", 64))
+	sparseFile(t, filepath.Join(root, "dump.txt"), head, largeFileBytes)
+	sparseFile(t, filepath.Join(root, "model.gguf"), []byte("GGUF\x00\x00\x00"), largeFileBytes)
+
+	_, result := searchAllocDelta(t, a, `{"pattern":"memory store"}`)
+
+	if !strings.Contains(result, "skipped") || !strings.Contains(result, "dump.txt") {
+		t.Errorf("the result does not say dump.txt was skipped for its size: %q", result)
+	}
+	if strings.Contains(result, "model.gguf") {
+		t.Errorf("a binary file should be passed over without a note: %q", result)
+	}
+
+	_, result = searchAllocDelta(t, a, `{"pattern":"no such text anywhere"}`)
+	if !strings.Contains(result, "no matches") || !strings.Contains(result, "dump.txt") {
+		t.Errorf("no matches must still name the skipped file, so it is not read as absence: %q", result)
+	}
+}
+
+// A file under the size limit is searched all the way to its last line: the fix
+// must not turn into skipping everything that is not tiny.
+func TestSearchFiles_MidSizeTextFileIsStillSearched(t *testing.T) {
+	a, root := makeTestAgent(t)
+	body := strings.Repeat("filler line of ordinary text\n", 40000) + "needle at the very end\n" // about 1.1 MiB
+	os.WriteFile(filepath.Join(root, "mid.txt"), []byte(body), 0o644)
+
+	_, result := searchAllocDelta(t, a, `{"pattern":"needle"}`)
+
+	if !strings.Contains(result, "mid.txt:40001:needle at the very end") {
+		t.Errorf("a 1 MiB text file was not searched to its end: %q", result)
+	}
+}

@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -26,6 +27,10 @@ const maxInputPattern = 1024
 
 // maxInputCommand caps run_command / git_command argument strings.
 const maxInputCommand = 4096
+
+// maxSearchFileBytes is the largest text file search_files reads: 8 MiB. A
+// larger one is skipped and named in the result, not read.
+const maxSearchFileBytes = 8 << 20
 
 /** RegisterBuiltinTools registers all of Harvey's built-in schema-based tools
  * with the given registry. Every handler enforces the workspace boundary,
@@ -442,6 +447,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			var sb strings.Builder
 			count := 0
 			truncated := false
+			var skippedLarge []string // text files over maxSearchFileBytes, named in the result
 
 			filepath.WalkDir(absRoot, func(path string, d fs.DirEntry, werr error) error {
 				if werr != nil || truncated {
@@ -462,12 +468,28 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				if isAgentsDir(a.Workspace.Root, path) {
 					return nil
 				}
-				data, err := os.ReadFile(path)
-				if err != nil || isBinary(data) {
+				// Never read a file whole to decide whether to search it: a
+				// workspace can hold models and databases of many GiB (an
+				// out-of-memory kill, 2026-11-06). Look at the first bytes for
+				// binary, then the size, then stream the lines.
+				f, err := os.Open(path)
+				if err != nil {
+					return nil
+				}
+				defer f.Close()
+				prefix := make([]byte, 512)
+				n, _ := io.ReadFull(f, prefix)
+				prefix = prefix[:n]
+				if isBinary(prefix) {
 					return nil
 				}
 				rel, _ := filepath.Rel(a.Workspace.Root, path)
-				scanner := bufio.NewScanner(strings.NewReader(string(data)))
+				if info, serr := f.Stat(); serr == nil && info.Size() > maxSearchFileBytes {
+					skippedLarge = append(skippedLarge, rel)
+					return nil
+				}
+				scanner := bufio.NewScanner(io.MultiReader(bytes.NewReader(prefix), f))
+				scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 				lineNum := 0
 				for scanner.Scan() {
 					lineNum++
@@ -486,10 +508,20 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			if truncated {
 				sb.WriteString(fmt.Sprintf("\n[results truncated at %d matches]", maxMatches))
 			}
-			if count == 0 {
-				return "no matches found", nil
+			// Say what was not searched, so "no matches" is not read as "not there".
+			note := ""
+			if len(skippedLarge) > 0 {
+				names, more := skippedLarge, ""
+				if len(names) > 5 {
+					names, more = names[:5], fmt.Sprintf(" and %d more", len(skippedLarge)-5)
+				}
+				note = fmt.Sprintf("\n[skipped %d file(s) over %d MiB: %s%s]",
+					len(skippedLarge), maxSearchFileBytes>>20, strings.Join(names, ", "), more)
 			}
-			return capOutput(sb.String(), maxBytes), nil
+			if count == 0 {
+				return "no matches found" + note, nil
+			}
+			return capOutput(sb.String(), maxBytes) + note, nil
 		},
 	)
 
