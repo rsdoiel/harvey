@@ -28,6 +28,28 @@ const maxInputPattern = 1024
 // maxInputCommand caps run_command / git_command argument strings.
 const maxInputCommand = 4096
 
+// sniffFile returns the first 512 bytes of a file and its size without reading
+// the rest, enough to tell a binary file from text.
+func sniffFile(path string) (prefix []byte, size int64, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+	buf := make([]byte, 512)
+	n, _ := io.ReadFull(f, buf)
+	return buf[:n], info.Size(), nil
+}
+
+// maxChunkFileBytes is the largest file read_file reads whole to chunk it: 64
+// MiB. Chunked analysis needs the full text, so a larger file is refused with a
+// message instead of read. A variable so a test can lower it.
+var maxChunkFileBytes int64 = 64 << 20
+
 // maxSearchFileBytes is the largest text file search_files reads: 8 MiB. A
 // larger one is skipped and named in the result, not read.
 const maxSearchFileBytes = 8 << 20
@@ -119,6 +141,22 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				sb.WriteString(result.Text)
 				return capOutput(sb.String(), maxBytes), nil
 			}
+			// A binary file (a model, a database) is not read and not shown as garbage:
+			// the model gets a message saying what it is. A message, not an error, so a
+			// small model does not retry the call.
+			prefix, fileSize, sniffErr := sniffFile(resolved)
+			if sniffErr != nil {
+				if a.AuditBuffer != nil {
+					a.AuditBuffer.Log(ActionFileRead, p, StatusError)
+				}
+				return "", fmt.Errorf("read_file: %w", sniffErr)
+			}
+			if isBinary(prefix) {
+				if a.AuditBuffer != nil {
+					a.AuditBuffer.Log(ActionFileRead, p, StatusSuccess)
+				}
+				return fmt.Sprintf("read_file: %s looks binary (%s); not shown. Use a tool made for that format.", p, formatBytes(fileSize)), nil
+			}
 			// ── Chunking pre-read guard ─────────────────────────────────────────
 			if a.Config.Chunking.Enabled && a.Client != nil {
 				rem := remainingContext(a)
@@ -133,6 +171,15 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				}
 				budget := int(float64(rem) * a.Config.Chunking.Threshold)
 				if exceeded, size, statErr := fileExceedsBudget(resolved, budget); statErr == nil && exceeded {
+					// Chunking reads the whole text, so a very large file is refused
+					// here, before the operator is asked and before it is read.
+					if size > maxChunkFileBytes {
+						if a.AuditBuffer != nil {
+							a.AuditBuffer.Log(ActionFileRead, p, StatusSuccess)
+						}
+						return fmt.Sprintf("read_file: %s is %s, too large to chunk (limit %s). Search it with search_files or read part of it.",
+							p, formatBytes(size), formatBytes(maxChunkFileBytes)), nil
+					}
 					lastMsg := lastUserMessage(a)
 					instruction, cancelled := promptChunkInstruction(a.In, a.Out, p, int(size/4), budget, lastMsg)
 					if cancelled {
@@ -193,7 +240,22 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				}
 			}
 			// ── Normal read ─────────────────────────────────────────────────────
-			data, err := os.ReadFile(resolved)
+			// Read at most the cap plus one byte: the output is cut at maxBytes
+			// anyway, so reading the rest only costs memory (an out-of-memory kill,
+			// 2026-11-06). The extra byte shows the file was longer than the cap.
+			limit := maxBytes
+			if limit <= 0 {
+				limit = defaultMaxOutputBytes
+			}
+			f, err := os.Open(resolved)
+			if err != nil {
+				if a.AuditBuffer != nil {
+					a.AuditBuffer.Log(ActionFileRead, p, StatusError)
+				}
+				return "", fmt.Errorf("read_file: %w", err)
+			}
+			defer f.Close()
+			data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
 			if err != nil {
 				if a.AuditBuffer != nil {
 					a.AuditBuffer.Log(ActionFileRead, p, StatusError)
@@ -203,7 +265,10 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			if a.AuditBuffer != nil {
 				a.AuditBuffer.Log(ActionFileRead, p, StatusSuccess)
 			}
-			return capOutput(string(data), maxBytes), nil
+			if len(data) > limit {
+				return string(data[:limit]) + fmt.Sprintf("\n[output truncated at %d bytes; the file is %s]", limit, formatBytes(fileSize)), nil
+			}
+			return string(data), nil
 		},
 	)
 
