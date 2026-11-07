@@ -244,6 +244,13 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   deprecated" the same record, and three more queries matched nothing, while `/kb concept recall "memory store"` finds concept `memory` and the
   DR-0037 hand-off sections. Recall matches concept names, so a model that phrases a sentence misses; the tool description and the empty-result text
   could say to try one or two concept words (`kb concept list`), or the tool could fall back to full-text search when no concept matches.
+  **Sharper after the 2026-11-06 rerun (after the file-tool fixes, harvey stayed at 25-86 MB):** the answer is in the kb, as accepted record
+  `harvey/DR-0037` ("Retire the memory store…"), and `kb search "memory store"` finds it, but `kb concept recall "memory store"` does not return it: its
+  hits for concept `memory` are document gists and sections that are unreviewed or unsummarized (`FormatKBRecallHit` drops a hit with no excerpt),
+  and the only record that survives is the unrelated `kb:record:135`. So the model made 9 tool calls (7 `recall_knowledge`, 2 `file_tree`, one refused
+  because `agents/` is off-limits to tools) in 7 minutes and never answered. Fix candidates: tag DR-0037 (and other accepted records) with the concepts a
+  question would use; let `recall_knowledge` fall back to FTS (`kb search`) when concept recall yields nothing displayable; and stop the loop after N
+  empty or repeated results.
 
 - [ ] **The startup banner still advertises `/memory mine`.** Found 2026-11-06 on wren: `39 session(s) unmined — /memory mine to extract learnings`
   prints at every start (`commands.go:679-687`), and `/memory` and the miner are still registered. Drop the banner, and the `/memory` command, when the
