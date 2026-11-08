@@ -198,6 +198,8 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
+- [ ] Review https://medium.com/ai-engineering-simplified/the-anatomy-of-an-ai-agent-harness-2bf7d9379fb4?sk=v2%2Ff3bb8552-a673-4020-972d-cee1ff768cf5 and determine if there are helpful insights for Harvey. Also review the citations at the bottom of the post
+
 - [ ] **A large tool result makes a CPU-only turn time out: `file_tree` returned 65 KB and the next request died at the 10-minute limit.** Found
   2026-11-06 on wren (Pi 5, CPU only), `qwen3.5:4b`, harvey 0.0.20 `cd480d8`, non-interactive run. After two empty `recall_knowledge` results the model
   called `file_tree` with no arguments (65,570 bytes, about 16-20 K tokens, kept as a blob); the next request was sent at 22:27:42 UTC and failed at
