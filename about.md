@@ -16,7 +16,7 @@ version: 0.0.20
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
-  - Go >= 1.26.4
+  - Go >= 1.27.3
 
 
 date_released: 2026-10-20
@@ -50,20 +50,20 @@ The Harvey name was inspired by the play of that name by Mary Chase. I saw paral
 
 ## Programming languages
 
-- Go >= 1.26.4
+- Go >= 1.27.3
 
 
 
 
 ## Software Requirements
 
+- Go >= 1.27.3
 - Ollama plus Ollama models
 - kb (github.com/rsdoiel/knowledge) >= 0.0.30
 
 
 ## Software Suggestions
 
-- Go >= 1.26.4
 - CMTools >= 0.0.45
 - Pandoc >= 3.9
 - GNU Make >= 3.8

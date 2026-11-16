@@ -6,7 +6,7 @@ No cloud account or API key required.
 
 ## Requirements
 
-- Go >= 1.26.3
+- Go >= 1.27.3
 - Git
 - A running model backend — [Ollama](https://ollama.com) or hailo-ollama
 

@@ -107,7 +107,7 @@ Harvey runs on:
 
 ### Software Suggestions
 
-- Go >= 1.26.4
+- Go >= 1.27.3
 - CMTools >= 0.0.45
 - Pandoc >= 3.9
 - GNU Make >= 3.8
