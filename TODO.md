@@ -853,5 +853,5 @@ To match the workspace standard (knowledge and opml are the models; Go 1.27.3 ac
 - [x] Makefile: add `check-go-version` (go.mod, codemeta.json and the Go in use agree); `check-release` calls it.
 - [x] Drop the armv7l target and 32-bit Pi wording (dropped 2026-10-27).
 - [x] publish.bash/publish.ps1: take knowledge's checked versions (a failed pull no longer publishes nothing silently).
-- [ ] release.bash: bring up to fountain's version.
-- [ ] release.ps1: take knowledge's (existing-draft check, checksums).
+- [x] release.bash: differs from fountain's only in two echo lines (harvey's are cleaner), so it is left as is.
+- [x] release.ps1: take knowledge's (existing-draft check, checksums).
