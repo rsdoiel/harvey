@@ -11,7 +11,12 @@ import (
 )
 
 /** kbMinVersion is the oldest kb harvey works with: the release whose JSON
- * the fixtures in testdata/kb were captured from and whose verbs harvey calls.
+ * the fixtures in testdata/kb were first captured from and whose verbs harvey
+ * calls. The fixtures were recaptured from kb 0.0.31 on 2026-11-17: the three
+ * built from a scratch database came out byte for byte the same, so 0.0.30
+ * stays the minimum; the other two differ only in the workspace data
+ * (concept_recall_kinds.json) and in an extra plain "kb: no concept matched"
+ * line ahead of the JSON (concept_recall_none.json), which ParseKBRecall skips.
  * Raise it when harvey starts to depend on something a newer kb added (a
  * contract test and a fixture go with the change); a kb older than this, or
  * one that does not report a version, is treated as unavailable.

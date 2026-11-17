@@ -136,7 +136,8 @@ func TestKBRecallContract_InstalledKB(t *testing.T) {
 }
 
 // DR-0090 (kb 0.0.30): a draft observation is not recalled. The fixtures were
-// captured from kb 0.0.30; in both, a model-drafted observation shares the
+// captured from kb 0.0.30 and recaptured from kb 0.0.31 on 2026-11-17 (the JSON
+// is byte for byte the same); in both, a model-drafted observation shares the
 // concept with, or is the only observation of, a concept that is recalled.
 func TestKBRecallContract_DraftIsNotRecalled(t *testing.T) {
 	res, err := ParseKBRecall(readKBFixture(t, "concept_recall_draft_excluded.json"))

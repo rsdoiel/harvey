@@ -2,55 +2,55 @@
   "hits": [
     {
       "kind": "record",
-      "id": 120,
+      "id": 180,
       "project": "harvey",
       "concepts": [
         "ollama"
       ],
-      "title": "Models are looked for where each model system keeps them; ~/Models is for llamafiles only",
-      "excerpt": "**Context.** Harvey found models by scanning `~/Models` for `*.llamafile` and `*.gguf`, whatever the model system. That…",
+      "title": "Assay profiles models on Ollama and hailo-ollama and hints at a route",
+      "excerpt": "**Context.** `assay` was built to compare Ollama, llamafile and llama.cpp models on Go and SQL generation (DR-0024). Ll…",
       "sources": [],
       "material": {
-        "path": "agents/projects/harvey/decisions/0031-models-are-looked-for-where-each-model-system.md",
-        "checksum": "sha256:c685536ad659649c5ecd174353bc77df361083fc54e820aa77732124dd743e02",
+        "path": "agents/projects/harvey/decisions/0051-assay-profiles-models-on-ollama-and-hailo-ollama.md",
+        "checksum": "sha256:9722cfb7a68d9dc34a5fa19bbc10f4d78eb91b6557a9c9e5981814ffa52abbcf",
         "format": "markdown",
-        "ingested_at": "2026-10-30T00:13:52Z"
+        "ingested_at": "2026-11-07T00:37:48Z"
       },
       "retracted": false
     },
     {
       "kind": "document_gist",
-      "id": 93,
+      "id": 403,
       "project": "harvey",
       "concepts": [
         "ollama"
       ],
-      "title": "v0.0.19: llama.cpp cache default, live model tests, completion, flag precedence, release",
+      "title": "harvey on wren (no HAT) with knowledge v0.0.30: out-of-memory kill traced to whole-file reads and fixed; recall gap found",
       "excerpt": "",
       "sources": [],
       "material": {
-        "path": "agents/projects/harvey/hand-off/20261010-v0019-llamacpp-cache-completion-and-release.md",
-        "checksum": "sha256:f6317bafb49327122da11dc284232bbc495c0f22904c0e400970ab23bf0abcfd",
+        "path": "agents/projects/harvey/hand-off/20261106-wren-test-oom-fixes.md",
+        "checksum": "sha256:0f95766a745056003a283e95c2db51707568a969e57b75d55715aefd794ddcd5",
         "format": "markdown",
-        "ingested_at": "2026-10-11T15:28:22Z"
+        "ingested_at": "2026-11-07T00:37:20Z"
       },
       "retracted": false
     },
     {
       "kind": "document_section",
-      "id": 97,
+      "id": 407,
       "project": "harvey",
       "concepts": [
         "ollama"
       ],
-      "title": "v0.0.19: llama.cpp cache default, live model tests, completion, flag precedence, release / Current State",
+      "title": "harvey on wren (no HAT) with knowledge v0.0.30: out-of-memory kill traced to whole-file reads and fixed; recall gap found / Goal",
       "excerpt": "",
       "sources": [],
       "material": {
-        "path": "agents/projects/harvey/hand-off/20261010-v0019-llamacpp-cache-completion-and-release.md",
-        "checksum": "sha256:f6317bafb49327122da11dc284232bbc495c0f22904c0e400970ab23bf0abcfd",
+        "path": "agents/projects/harvey/hand-off/20261106-wren-test-oom-fixes.md",
+        "checksum": "sha256:0f95766a745056003a283e95c2db51707568a969e57b75d55715aefd794ddcd5",
         "format": "markdown",
-        "ingested_at": "2026-10-11T15:28:22Z"
+        "ingested_at": "2026-11-07T00:37:20Z"
       },
       "retracted": false
     }
